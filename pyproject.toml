@@ -3,7 +3,7 @@ requires = ["maturin>=1.15"]
 build-backend = "maturin"
 
 [project]
-name = "date-parser"
+name = "gnosis-date-parser"
 version = "0.1.0"
 description = "Fast fuzzy parsing of dates in varying formats."
 readme = "README.md"

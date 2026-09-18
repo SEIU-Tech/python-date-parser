@@ -293,39 +293,6 @@ wheels = [
 ]
 
 [[package]]
-name = "date-parser"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "dateparser" },
-    { name = "polars" },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "ipython", version = "8.39.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "ipython", version = "9.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "maturin" },
-    { name = "mkdocs-material" },
-    { name = "mypy" },
-    { name = "pytest" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "dateparser", specifier = ">=1.4.3" },
-    { name = "ipython", marker = "extra == 'dev'", specifier = ">=8.39.0" },
-    { name = "maturin", marker = "extra == 'dev'", specifier = ">=1.15" },
-    { name = "mkdocs-material", marker = "extra == 'dev'", specifier = ">=9.5" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13" },
-    { name = "polars", specifier = ">=1.44.2" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.7" },
-]
-provides-extras = ["dev"]
-
-[[package]]
 name = "dateparser"
 version = "1.4.3"
 source = { registry = "https://pypi.org/simple" }
@@ -381,6 +348,39 @@ sdist = { url = "https://files.pythonhosted.org/packages/d9/29/d40217cbe2f6b1359
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f7/ec/67fbef5d497f86283db54c22eec6f6140243aae73265799baaaa19cd17fb/ghp_import-2.1.0-py3-none-any.whl", hash = "sha256:8337dd7b50877f163d4c0289bc1f1c7f127550241988d568c1db512c4324a619", size = 11034, upload-time = "2022-05-02T15:47:14.552Z" },
 ]
+
+[[package]]
+name = "gnosis-date-parser"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "dateparser" },
+    { name = "polars" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "ipython", version = "8.39.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "ipython", version = "9.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "maturin" },
+    { name = "mkdocs-material" },
+    { name = "mypy" },
+    { name = "pytest" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "dateparser", specifier = ">=1.4.3" },
+    { name = "ipython", marker = "extra == 'dev'", specifier = ">=8.39.0" },
+    { name = "maturin", marker = "extra == 'dev'", specifier = ">=1.15" },
+    { name = "mkdocs-material", marker = "extra == 'dev'", specifier = ">=9.5" },
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13" },
+    { name = "polars", specifier = ">=1.44.2" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.7" },
+]
+provides-extras = ["dev"]
 
 [[package]]
 name = "idna"

@@ -52,7 +52,7 @@ interprets these in the local timezone instead.
 ## Installation
 
 ```bash
-pip install date-parser
+pip install gnosis-date-parser
 ```
 
 ## Benchmarking
@@ -108,6 +108,30 @@ uv run pytest -q
 uv run ruff check .
 uv run mypy bin tests date_parser
 ```
+
+## Releasing
+
+Releases are cut by pushing a `v*` tag; `.github/workflows/release.yml`
+builds wheels for Linux (glibc + musl, x86_64 + aarch64), macOS
+(x86_64 + arm64), and Windows (x86_64 + arm64), plus an sdist, and
+uploads them to PyPI via [Trusted Publishing](https://docs.pypi.org/trusted-publishers/)
+(OIDC). No PyPI token is stored in the repository.
+
+```bash
+# Pick up the current version from pyproject.toml (e.g. 0.1.0).
+# Tag and push to trigger the release workflow.
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+One-time setup on PyPI (at <https://pypi.org/manage/account/publishing/>):
+
+1. Add a pending trusted publisher for `SEIU-Tech/python-date-parser`.
+2. Set the workflow filename to `release.yml` and leave the environment
+   name blank (or define a `release` GitHub environment and reference
+   it from `release.yml` if you want manual approval gating).
+3. Claim ownership of the `gnosis-date-parser` project name on PyPI
+   (or create it if this is the first release).
 
 ## License
 
