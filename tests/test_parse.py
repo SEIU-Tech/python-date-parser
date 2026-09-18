@@ -10,6 +10,32 @@ def test_parse_iso_date() -> None:
     ]
 
 
+def test_parse_iso8601_t_separator() -> None:
+    """ISO-8601 datetimes using the ``T`` separator should parse correctly.
+
+    The underlying ``dateparser`` crate rejects the no-offset form
+    ``YYYY-MM-DDTHH:MM:SS``; we normalize the separator to a space.
+    The forms that already included a timezone designator (``Z`` or
+    ``±HH:MM``) are regression checks.
+    """
+    # No offset — the case the crate refuses, fixed by our normalizer.
+    assert json.loads(date_parser.parse(["2026-09-18T01:02:03"])) == [
+        "2026-09-18 01:02:03+00:00"
+    ]
+    # No offset, with fractional seconds.
+    assert json.loads(date_parser.parse(["2026-09-18T01:02:03.123"])) == [
+        "2026-09-18 01:02:03.123+00:00"
+    ]
+    # With ``Z`` (already worked before, included as a regression check).
+    assert json.loads(date_parser.parse(["2026-09-18T01:02:03Z"])) == [
+        "2026-09-18 01:02:03+00:00"
+    ]
+    # With explicit offset (also previously working, kept as regression).
+    assert json.loads(date_parser.parse(["2026-09-18T01:02:03+05:30"])) == [
+        "2026-09-17 19:32:03+00:00"
+    ]
+
+
 def test_parse_multiple() -> None:
     """Each input is parsed independently and results are returned in order."""
     assert json.loads(
