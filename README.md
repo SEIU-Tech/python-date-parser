@@ -2,9 +2,46 @@
 
 Perform fast fuzzy parsing of dates in varying formats.
 
-## Status
+## Background
 
-The Rust extension exposes three parsing functions:
+Numerous prior projects to perform fuzzy date parsing are available on PyPI.
+The best of these appears to be https://pypi.org/project/dateparser/, but I
+have not tried all of them.  All of those I have seen are written in
+pure-Python, and consequentially are too slow to use when the requirement is to
+parse tabular data with hundreds of thousands of dates in an interactive manner
+(e.g. at the time of data upload to a website where an immediate response is
+needed).
+
+In many cases—arguably including the one motivating creation of this
+library—transferring the slow operation to a background batch operation is a
+reasonable approach.  However, I learned of the very fast Rust library 
+`dateparser` (https://crates.io/crates/dateparser), which is as powerful in 
+recognizing many date formats as are any of the Python libraries I explored.  
+
+What I have used historically is the fuzzy date matching in Pandas; this is 
+_good_, but for numerous other reasons, I wish to move away from Pandas (mostly
+in favor of Polars).  However, one area where Pandas currently shines above
+Polars is in parsing heterogenous dates defined in the same column of source
+data.  Yes, that is bad data and the provider should do better. In the real
+world, a lot of data looks that way.
+
+This library is a thin wrapper around the existing Rust `dateparser` and 
+`chrono`.  It was mostly created with the aid of an AI assistant.  Although
+commit messages attribute this Claude, the underlying model used was a slightly
+customized version of MiniMax M2.7 that was hosted by a smaller AI vendor. I 
+simply used the Claude Code CLI as a way of interacting with the code and 
+model.
+
+This library is **thousands of times** faster than any pure-Python library for
+a similar task.  I have not yet benchmarked it, but I believe it is also 10x+
+faster than similar capability in `pandas.to_datetime(..., format="mixed")`.
+
+
+## Design
+
+The underlying Rust extension exposes three parsing functions. The Rust
+library created for this binding adds very little to the capabilities of
+crates it uses.
 
 - `parse(raw: str) -> str | None` — accepts a single raw date string
   and returns its ISO-8601 representation (or `None` for inputs the
@@ -20,7 +57,8 @@ The Rust extension exposes three parsing functions:
   of string dtype and returns a Polars Series of `pl.Datetime("ns")`
   (naive UTC, nanosecond precision). Unparseable strings become null
   values in the result. The Polars path works directly on the
-  underlying Arrow buffer via [`pyo3-polars`](https://docs.rs/pyo3-polars/0.28.0/pyo3_polars/),
+  underlying Arrow buffer via 
+  [`pyo3-polars`](https://docs.rs/pyo3-polars/0.28.0/pyo3_polars/),
   so there is no Python-level iteration or list materialization.
 
 All three paths use the same parsing logic via the
@@ -88,6 +126,46 @@ After each timed run the script verifies the parsed output against the
 expected ISO-8601 values in `tests/data/examples.txt` and prints any
 mismatches.
 
+On my system, at version 1.0, I see:
+
+```
+date_parser (Rust extension, this project) — parse() per input:
+  total parses:   475
+  failed parses:  0
+  elapsed:        0.000 s
+  throughput:     1,153,021 dates/sec
+
+verification: 95/95 inputs matched expected
+
+date_parser (Rust extension, this project) — parse() bulk list API:
+  total parses:   475
+  failed parses:  0
+  elapsed:        0.000 s
+  throughput:     1,297,230 dates/sec
+
+verification: 95/95 inputs matched expected
+
+date_parser (Rust extension, this project) — parse_series Polars API:
+  total parses:   475
+  failed parses:  0
+  elapsed:        0.000 s
+  throughput:     2,001,053 dates/sec
+
+verification: 95/95 inputs matched expected
+
+dateparser (Python reference, https://pypi.org/project/dateparser/):
+  total parses:   475
+  failed parses:  0
+  elapsed:        3.247 s
+  throughput:     146 dates/sec
+
+verification: 10/95 inputs did not match expected
+
+[... to be fair, examples were mainly drawn from the underlying Rust crate ...]
+
+speedup (date_parser vs dateparser): 7882.0x faster
+```
+
 ## Local development
 
 The project uses [uv](https://docs.astral.sh/uv/) for environment and
@@ -108,30 +186,6 @@ uv run pytest -q
 uv run ruff check .
 uv run mypy bin tests date_parser
 ```
-
-## Releasing
-
-Releases are cut by pushing a `v*` tag; `.github/workflows/release.yml`
-builds wheels for Linux (glibc + musl, x86_64 + aarch64), macOS
-(x86_64 + arm64), and Windows (x86_64 + arm64), plus an sdist, and
-uploads them to PyPI via [Trusted Publishing](https://docs.pypi.org/trusted-publishers/)
-(OIDC). No PyPI token is stored in the repository.
-
-```bash
-# Pick up the current version from pyproject.toml (e.g. 0.1.0).
-# Tag and push to trigger the release workflow.
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-One-time setup on PyPI (at <https://pypi.org/manage/account/publishing/>):
-
-1. Add a pending trusted publisher for `SEIU-Tech/python-date-parser`.
-2. Set the workflow filename to `release.yml` and leave the environment
-   name blank (or define a `release` GitHub environment and reference
-   it from `release.yml` if you want manual approval gating).
-3. Claim ownership of the `gnosis-date-parser` project name on PyPI
-   (or create it if this is the first release).
 
 ## License
 
