@@ -35,7 +35,10 @@ DEFAULT_EXAMPLES = (
 
 # Library identifiers and their human-readable labels for the report.
 LIBRARIES: dict[str, str] = {
-    "date_parser": "date_parser (Rust extension, this project)",
+    "date_parser": "date_parser (Rust extension, this project) — parse() per input",
+    "date_parser_list": (
+        "date_parser (Rust extension, this project) — parse() bulk list API"
+    ),
     "date_parser_series": "date_parser (Rust extension, this project) — parse_series Polars API",
     "dateparser": "dateparser (Python reference, https://pypi.org/project/dateparser/)",
 }
@@ -119,6 +122,15 @@ def make_parser(name: str, raw_inputs: list[str]) -> Callable[[str], object]:
             return date_parser.parse([raw])
 
         return parse
+    if name == "date_parser_list":
+        import date_parser
+
+        # The list API takes the whole list in one call, so the per-input
+        # ``raw`` argument is intentionally ignored.
+        def parse(raw: str) -> object:
+            return date_parser.parse(raw_inputs)
+
+        return parse
     if name == "date_parser_series":
         import polars as pl
 
@@ -143,29 +155,30 @@ def make_parser(name: str, raw_inputs: list[str]) -> Callable[[str], object]:
     raise ValueError(msg)
 
 
-def is_per_series(name: str) -> bool:
-    """Return True if the library operates on a whole Series per call.
+def is_bulk(name: str) -> bool:
+    """Return True if the library operates on the whole batch in one call.
 
-    The ``parse_series`` Polars API parses the entire Series in one call
-    rather than per-element, so the benchmark loop and throughput
-    accounting have to treat it differently from the per-input APIs.
+    The ``parse_series`` Polars API and the ``parse()`` bulk-list API
+    both parse every input in a single call rather than per-element, so
+    the benchmark loop and throughput accounting have to treat them
+    differently from the per-input APIs.
     """
-    return name == "date_parser_series"
+    return name in ("date_parser_series", "date_parser_list")
 
 
 def run_calls(
     parse: Callable[[str], object],
     raw_inputs: Iterable[str],
-    per_series: bool,
+    bulk: bool,
 ) -> int:
     """Drive the parser; return the failure count.
 
     For per-input libraries we call ``parse`` once for every raw input.
-    For per-Series libraries (``date_parser_series``) we call ``parse``
-    once per ``run_calls`` invocation — it parses the entire Series in
-    one shot and the per-input argument is ignored.
+    For bulk libraries (``date_parser_series``, ``date_parser_list``) we
+    call ``parse`` once per ``run_calls`` invocation — it parses the
+    whole batch in one shot and the per-input argument is ignored.
     """
-    if per_series:
+    if bulk:
         try:
             parse("")
         except Exception:  # benchmark must not abort on parse errors
@@ -185,19 +198,19 @@ def benchmark(
     raw_inputs: list[str],
     iterations: int,
     warmup: int,
-    per_series: bool = False,
+    bulk: bool = False,
 ) -> tuple[float, int, int]:
     """Run ``iterations`` timed passes plus ``warmup`` warmup passes.
 
     ``total_parses`` always reports *elements* processed (per-input
-    libraries count 1 per call; per-Series libraries count the Series
-    length per call) so throughput figures are comparable across the
-    two styles.
+    libraries count 1 per call; bulk libraries count the batch length
+    per call) so throughput figures are comparable across the two
+    styles.
 
     Returns ``(elapsed_seconds, total_parses, failures)``.
     """
     for _ in range(warmup):
-        run_calls(parse, raw_inputs, per_series)
+        run_calls(parse, raw_inputs, bulk)
 
     total_parses = 0
     failures = 0
@@ -205,11 +218,11 @@ def benchmark(
     for _ in range(iterations):
         # Accumulate per-iteration failures so a bad input never poisons
         # the whole run.
-        failures += run_calls(parse, raw_inputs, per_series)
-        # Both styles process one Series-worth of elements per iteration:
+        failures += run_calls(parse, raw_inputs, bulk)
+        # Both styles process one batch-worth of elements per iteration:
         # per-input libraries do ``len(raw_inputs)`` calls each handling
-        # one element; per-Series libraries do a single call that
-        # processes them all at once.
+        # one element; bulk libraries do a single call that processes
+        # them all at once.
         total_parses += len(raw_inputs)
     elapsed = time.perf_counter() - start
     return elapsed, total_parses, failures
@@ -229,7 +242,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--library",
         "-l",
-        choices=("date_parser", "date_parser_series", "dateparser", "both"),
+        choices=(
+            "date_parser",
+            "date_parser_list",
+            "date_parser_series",
+            "dateparser",
+            "both",
+        ),
         default="both",
         help="Which library to benchmark (default: both)",
     )
@@ -405,6 +424,141 @@ def verify_parser(
     return mismatches
 
 
+def bulk_actual_instants(name: str, actual: object) -> list[datetime | None] | None:
+    """Unwrap a bulk-parser result into a list of UTC datetimes (or ``None``).
+
+    ``date_parser_list`` returns a JSON-encoded array of ISO-8601 strings
+    (or ``null``); we decode it element-by-element and normalize to UTC
+    the same way :func:`to_actual_instant` does for per-input results.
+    ``date_parser_series`` returns a Polars ``Series`` of naive UTC
+    ``pl.Datetime("ns")``; we materialize it to a Python list and
+    promote each ``datetime`` to UTC-aware form for comparison.
+
+    Returns ``None`` if the shape of ``actual`` doesn't match what the
+    named library is expected to produce; the caller surfaces that as a
+    single ``EXCEPTION``-style mismatch so the report still says
+    *something* useful.
+    """
+    if name == "date_parser_list":
+        if not isinstance(actual, str):
+            return None
+        try:
+            decoded = json.loads(actual)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(decoded, list):
+            return None
+        out: list[datetime | None] = []
+        for entry in decoded:
+            if entry is None:
+                out.append(None)
+            else:
+                out.append(parse_expected_instant(entry))
+        return out
+    if name == "date_parser_series":
+        # ``pl.Series`` instances expose ``.to_list()`` and we already
+        # typed the import lazily via the closure above; use duck typing
+        # so this helper doesn't have to import Polars itself.
+        to_list = getattr(actual, "to_list", None)
+        if not callable(to_list):
+            return None
+        try:
+            entries = to_list()
+        except Exception:  # benchmark must not abort on parse errors
+            return None
+        out = []
+        for entry in entries:
+            if entry is None:
+                out.append(None)
+            elif isinstance(entry, datetime):
+                if entry.tzinfo is None:
+                    out.append(entry.replace(tzinfo=timezone.utc))
+                else:
+                    out.append(entry.astimezone(timezone.utc))
+            else:
+                out.append(None)
+        return out
+    return None
+
+
+def verify_bulk(
+    name: str,
+    parse_fn: Callable[[str], object],
+    examples: list[Example],
+) -> list[Mismatch]:
+    """Run a bulk parser once and compare each slot against the expected.
+
+    The per-input ``raw`` argument to ``parse_fn`` is ignored — bulk
+    parsers operate on the whole batch they captured at construction.
+    Comparison is in UTC, identical to :func:`verify_parser`.
+    """
+    try:
+        actual = parse_fn("")
+    except Exception as exc:  # benchmark/verify must not abort on parse errors
+        return [
+            Mismatch(
+                index=0,
+                example=examples[0] if examples else Example(raw="", expected="None"),
+                kind=MismatchKind.EXCEPTION,
+                actual_repr=f"<raised {type(exc).__name__}: {exc}>",
+            )
+        ]
+
+    actual_list = bulk_actual_instants(name, actual)
+    if actual_list is None:
+        return [
+            Mismatch(
+                index=0,
+                example=examples[0] if examples else Example(raw="", expected="None"),
+                kind=MismatchKind.EXCEPTION,
+                actual_repr=f"<unrecognized bulk result: {format_actual(name, actual)!r}>",
+            )
+        ]
+
+    mismatches: list[Mismatch] = []
+    for i, ex in enumerate(examples, start=1):
+        if i - 1 >= len(actual_list):
+            mismatches.append(
+                Mismatch(
+                    index=i,
+                    example=ex,
+                    kind=MismatchKind.EXPECTED_VALUE_GOT_NONE,
+                    actual_repr="<missing>",
+                )
+            )
+            continue
+        expected_dt = parse_expected_instant(ex.expected)
+        actual_dt = actual_list[i - 1]
+        expected_is_none_literal = ex.expected == "None"
+        expected_unparseable = (
+            not expected_is_none_literal and expected_dt is None
+        )
+        if expected_unparseable and actual_dt is None:
+            continue
+        if expected_unparseable:
+            mismatches.append(
+                Mismatch(i, ex, MismatchKind.EXPECTED_UNPARSEABLE, repr(actual_list[i - 1]))
+            )
+            continue
+        if expected_is_none_literal and actual_dt is None:
+            continue
+        if expected_is_none_literal:
+            mismatches.append(
+                Mismatch(i, ex, MismatchKind.EXPECTED_NONE_GOT_VALUE, repr(actual_list[i - 1]))
+            )
+            continue
+        if actual_dt is None:
+            mismatches.append(
+                Mismatch(i, ex, MismatchKind.EXPECTED_VALUE_GOT_NONE, "null")
+            )
+            continue
+        if expected_dt != actual_dt:
+            mismatches.append(
+                Mismatch(i, ex, MismatchKind.INSTANT_DIFFERS, str(actual_list[i - 1]))
+            )
+    return mismatches
+
+
 def print_verification(
     name: str, total: int, mismatches: list[Mismatch]
 ) -> None:
@@ -467,7 +621,7 @@ def main(argv: list[str] | None = None) -> int:
             raw_inputs,
             args.iterations,
             args.warmup,
-            per_series=is_per_series(lib),
+            bulk=is_bulk(lib),
         )
         results[lib] = (elapsed, parses, failures)
 
@@ -480,12 +634,15 @@ def main(argv: list[str] | None = None) -> int:
 
         # Verification runs after the timed loop so the throughput numbers
         # above reflect only parsing work, not the comparison overhead.
-        # The Series API doesn't fit a per-input comparison, so we skip
-        # the report for that library.
-        if lib != "date_parser_series":
+        # Bulk libraries (date_parser_list, date_parser_series) return a
+        # whole-batch result so they get a per-batch verifier below;
+        # per-input libraries use the per-input verifier.
+        if is_bulk(lib):
+            mismatches = verify_bulk(lib, parse_fn, examples)
+        else:
             mismatches = verify_parser(lib, parse_fn, examples)
-            print_verification(lib, len(examples), mismatches)
-            print()
+        print_verification(lib, len(examples), mismatches)
+        print()
 
     if "date_parser" in results and "dateparser" in results:
         a_elapsed, _, _ = results["date_parser"]
