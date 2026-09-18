@@ -21,6 +21,9 @@ classifiers = [
     "Operating System :: OS Independent",
     "License :: OSI Approved :: BSD License",
 ]
+dependencies = [
+    "dateparser>=1.4.3",
+]
 
 [project.optional-dependencies]
 dev = [
