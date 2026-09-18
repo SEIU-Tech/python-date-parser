@@ -116,11 +116,10 @@ def make_parser(name: str, raw_inputs: list[str]) -> Callable[[str], object]:
     """
     match name:
         case "date_parser":
-
+            # The single-string API takes one input and returns either
+            # an ISO-8601 string or ``None`` — no JSON encode/decode
+            # round-trip per call.
             def parse(raw: str) -> object:
-                # The single-string API takes one input and returns either
-                # an ISO-8601 string or ``None`` — no JSON encode/decode
-                # round-trip per call.
                 return date_parser.parse(raw)
 
             return parse
@@ -141,7 +140,7 @@ def make_parser(name: str, raw_inputs: list[str]) -> Callable[[str], object]:
 
             return parse
         case "dateparser":
-
+            # The Python module only operates on a single string.
             def parse(raw: str) -> object:
                 return dateparser.parse(raw)
 
