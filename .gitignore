@@ -230,4 +230,7 @@ date_parser/*.pyd
 # uv (project venv lives here)
 .venv/
 
+# Claude Code (local plans, memory, settings)
+.claude/
+
 
