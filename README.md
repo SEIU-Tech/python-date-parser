@@ -54,6 +54,39 @@ interprets these in the local timezone instead.
 pip install date-parser
 ```
 
+## Benchmarking
+
+`bin/benchmark.py` measures throughput of the three `date_parser`
+entry points side-by-side against the Python
+[`dateparser`](https://pypi.org/project/dateparser/) reference:
+
+```bash
+# Benchmark all four libraries (the Rust extension has three modes)
+uv run python bin/benchmark.py
+
+# Benchmark a single library
+uv run python bin/benchmark.py --library date_parser
+uv run python bin/benchmark.py --library date_parser_list
+uv run python bin/benchmark.py --library date_parser_series
+uv run python bin/benchmark.py --library dateparser
+
+# 10 timed iterations instead of the default 5
+uv run python bin/benchmark.py -n 10
+```
+
+The `--library` choices map to the underlying APIs as follows:
+
+| `--library`           | API exercised                              | Calls per iteration |
+| --------------------- | ------------------------------------------ | ------------------- |
+| `date_parser`         | `date_parser.parse(s)` (per input)         | `len(raw_inputs)`   |
+| `date_parser_list`    | `date_parser.parse_list(list)` (bulk)      | `1`                 |
+| `date_parser_series`  | `date_parser.parse_series(s)` (Polars/Arrow) | `1`               |
+| `dateparser`          | `dateparser.parse(s)` (per input, Python)  | `len(raw_inputs)`   |
+
+After each timed run the script verifies the parsed output against the
+expected ISO-8601 values in `tests/data/examples.txt` and prints any
+mismatches.
+
 ## Local development
 
 The project uses [uv](https://docs.astral.sh/uv/) for environment and
@@ -61,14 +94,18 @@ dependency management.
 
 ```bash
 # Create a venv and install dev dependencies (maturin, pytest, ruff,
-# mypy, mkdocs-material).
+# mypy, mkdocs-material, ipython).
 uv sync --extra dev
 
 # Compile the Rust extension and install it editable into the venv.
 uv run maturin develop --release
 
-# Run the smoke test.
+# Run the smoke tests (parse, parse_list, parse_series).
 uv run pytest -q
+
+# Lint and typecheck.
+uv run ruff check .
+uv run mypy bin tests date_parser
 ```
 
 ## License
