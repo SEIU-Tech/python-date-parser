@@ -18,7 +18,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
 import re
 import sys
 import time
@@ -404,9 +403,9 @@ def verify_parser(
 def bulk_actual_instants(name: str, actual: object) -> list[datetime | None] | None:
     """Unwrap a bulk-parser result into a list of UTC datetimes (or ``None``).
 
-    ``date_parser_list`` returns a JSON-encoded array of ISO-8601 strings
-    (or ``null``); we decode it element-by-element and normalize to UTC
-    the same way :func:`to_actual_instant` does for per-input results.
+    ``date_parser_list`` returns a Python list of ISO-8601 strings (or
+    ``None``); we normalize each entry to UTC the same way
+    :func:`to_actual_instant` does for per-input results.
     ``date_parser_series`` returns a Polars ``Series`` of naive UTC
     ``pl.Datetime("ns")``; we materialize it to a Python list and
     promote each ``datetime`` to UTC-aware form for comparison.
@@ -417,20 +416,16 @@ def bulk_actual_instants(name: str, actual: object) -> list[datetime | None] | N
     *something* useful.
     """
     if name == "date_parser_list":
-        if not isinstance(actual, str):
-            return None
-        try:
-            decoded = json.loads(actual)
-        except json.JSONDecodeError:
-            return None
-        if not isinstance(decoded, list):
+        if not isinstance(actual, list):
             return None
         out: list[datetime | None] = []
-        for entry in decoded:
+        for entry in actual:
             if entry is None:
                 out.append(None)
-            else:
+            elif isinstance(entry, str):
                 out.append(parse_expected_instant(entry))
+            else:
+                return None
         return out
     if name == "date_parser_series":
         # ``pl.Series`` instances expose ``.to_list()`` and we already

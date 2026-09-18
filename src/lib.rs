@@ -5,8 +5,8 @@
 //! - [`parse`] parses a single raw date string and returns its ISO-8601
 //!   representation (or `None` if the input cannot be parsed).
 //! - [`parse_list`] takes a Python list of raw date strings and returns
-//!   a JSON-encoded array of ISO-8601 representations. Inputs that fail
-//!   to parse produce `null` in the output array.
+//!   a list of ISO-8601 strings (or `None` for inputs that can't be
+//!   parsed). The returned list matches the input length and order.
 //! - [`parse_series`] takes a Polars `Series` of string dtype and
 //!   returns a Polars `Series` of `pl.Datetime("ns")`. It works
 //!   directly on the underlying Arrow buffer via `pyo3-polars`, so
@@ -50,42 +50,6 @@ fn format_datetime(dt: &DateTime<Utc>) -> String {
     let tz_idx = base.rfind(['+', '-']).unwrap_or(base.len());
     let (head, tail) = base.split_at(tz_idx);
     format!("{}.{}{}", head, frac, tail)
-}
-
-/// Encode a list of optional strings as a JSON array.
-///
-/// Strings are escaped per RFC 8259; `None` values become `null`.
-fn to_json_array(items: &[Option<String>]) -> String {
-    let mut out = String::with_capacity(items.len() * 16);
-    out.push('[');
-    for (i, item) in items.iter().enumerate() {
-        if i > 0 {
-            out.push(',');
-        }
-        match item {
-            Some(s) => {
-                out.push('"');
-                for c in s.chars() {
-                    match c {
-                        '"' => out.push_str("\\\""),
-                        '\\' => out.push_str("\\\\"),
-                        '\n' => out.push_str("\\n"),
-                        '\r' => out.push_str("\\r"),
-                        '\t' => out.push_str("\\t"),
-                        c if (c as u32) < 0x20 => {
-                            use std::fmt::Write as _;
-                            let _ = write!(out, "\\u{:04x}", c as u32);
-                        }
-                        c => out.push(c),
-                    }
-                }
-                out.push('"');
-            }
-            None => out.push_str("null"),
-        }
-    }
-    out.push(']');
-    out
 }
 
 /// Attempt to interpret ``raw`` as a Unix timestamp based on digit count.
@@ -195,10 +159,11 @@ fn parse(raw: &str) -> Option<String> {
     parse_one(raw, midnight).map(|dt| format_datetime(&dt))
 }
 
-/// Parse a list of raw date strings and return a JSON array of ISO-8601 strings.
+/// Parse a list of raw date strings and return a list of ISO-8601 strings.
 ///
 /// Each input is parsed independently by the [`dateparser`] crate; inputs
-/// that fail to parse produce `null` in the corresponding output slot.
+/// that fail to parse produce ``None`` in the corresponding output slot.
+/// The returned list matches the length and order of the input list.
 ///
 /// All parsed datetimes are normalized to UTC. Date-only inputs (e.g.
 /// `"2026-09-18"`) default to midnight UTC rather than the current time.
@@ -207,14 +172,13 @@ fn parse(raw: &str) -> Option<String> {
 /// `"2026-09-18T01:02:03"`) are normalized to a space separator before
 /// being handed to the parser.
 #[pyfunction]
-fn parse_list(raw_dates: Vec<String>) -> PyResult<String> {
+fn parse_list(raw_dates: Vec<String>) -> Vec<Option<String>> {
     let midnight = NaiveTime::from_hms_opt(0, 0, 0)
         .expect("00:00:00 is a valid NaiveTime; qed");
-    let results: Vec<Option<String>> = raw_dates
+    raw_dates
         .iter()
         .map(|raw| parse_one(raw, midnight).map(|dt| format_datetime(&dt)))
-        .collect();
-    Ok(to_json_array(&results))
+        .collect()
 }
 
 /// Parse a Polars string Series into a Datetime Series at Arrow speed.

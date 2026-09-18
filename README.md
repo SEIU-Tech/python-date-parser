@@ -10,10 +10,11 @@ The Rust extension exposes three parsing functions:
   and returns its ISO-8601 representation (or `None` for inputs the
   parser can't handle). No JSON encoding round-trip.
 
-- `parse_list(raw_dates: list[str]) -> str` — accepts a list of raw
-  date strings and returns a JSON-encoded array of ISO-8601 strings
-  (or `null` for inputs the parser can't handle). This is the
-  bulk-list path: one Rust call for the whole list.
+- `parse_list(raw_dates: list[str]) -> list[str | None]` — accepts a
+  list of raw date strings and returns a list of ISO-8601 strings (or
+  `None` for inputs the parser can't handle). The returned list matches
+  the input length and order. This is the bulk-list path: one Rust
+  call for the whole list, no JSON encoding involved.
 
 - `parse_series(s: pl.Series) -> pl.Series` — accepts a Polars Series
   of string dtype and returns a Polars Series of `pl.Datetime("ns")`
@@ -26,12 +27,12 @@ All three paths use the same parsing logic via the
 [`dateparser`](https://docs.rs/dateparser/0.3.1/dateparser/) crate.
 
 ```python
->>> import json, date_parser
+>>> import date_parser
 >>> date_parser.parse("2026-01-01")
 '2026-01-01 00:00:00+00:00'
 >>> date_parser.parse("garbage") is None
 True
->>> json.loads(date_parser.parse_list(["2026-01-01", "garbage", "06/15/2024"]))
+>>> date_parser.parse_list(["2026-01-01", "garbage", "06/15/2024"])
 ['2026-01-01 00:00:00+00:00', None, '2024-06-15 00:00:00+00:00']
 
 >>> import polars as pl

@@ -1,4 +1,3 @@
-import json
 from datetime import datetime
 
 import polars as pl
@@ -60,7 +59,7 @@ def test_parse_timestamp() -> None:
 
 def test_parse_list_iso_date() -> None:
     """A canonical ISO-8601 date should round-trip cleanly via parse_list."""
-    assert json.loads(date_parser.parse_list(["2026-09-18"])) == [
+    assert date_parser.parse_list(["2026-09-18"]) == [
         "2026-09-18 00:00:00+00:00"
     ]
 
@@ -72,48 +71,40 @@ def test_parse_list_iso8601_t_separator() -> None:
     the same normalization rules.
     """
     # No offset — the case the crate refuses, fixed by our normalizer.
-    assert json.loads(date_parser.parse_list(["2026-09-18T01:02:03"])) == [
+    assert date_parser.parse_list(["2026-09-18T01:02:03"]) == [
         "2026-09-18 01:02:03+00:00"
     ]
     # No offset, with fractional seconds.
-    assert json.loads(date_parser.parse_list(["2026-09-18T01:02:03.123"])) == [
+    assert date_parser.parse_list(["2026-09-18T01:02:03.123"]) == [
         "2026-09-18 01:02:03.123+00:00"
     ]
     # With ``Z`` (already worked before, included as a regression check).
-    assert json.loads(date_parser.parse_list(["2026-09-18T01:02:03Z"])) == [
+    assert date_parser.parse_list(["2026-09-18T01:02:03Z"]) == [
         "2026-09-18 01:02:03+00:00"
     ]
     # With explicit offset (also previously working, kept as regression).
-    assert json.loads(date_parser.parse_list(["2026-09-18T01:02:03+05:30"])) == [
+    assert date_parser.parse_list(["2026-09-18T01:02:03+05:30"]) == [
         "2026-09-17 19:32:03+00:00"
     ]
 
 
 def test_parse_list_multiple() -> None:
     """Each input is parsed independently and results are returned in order."""
-    assert json.loads(
-        date_parser.parse_list(["2026-01-01", "2026-02-02", "2026-03-03"])
-    ) == [
+    assert date_parser.parse_list(["2026-01-01", "2026-02-02", "2026-03-03"]) == [
         "2026-01-01 00:00:00+00:00",
         "2026-02-02 00:00:00+00:00",
         "2026-03-03 00:00:00+00:00",
     ]
 
 
-def test_parse_list_unparseable_returns_null() -> None:
-    """Inputs that the parser cannot handle become ``null`` in the output."""
-    assert json.loads(date_parser.parse_list(["not a date", "garbage"])) == [
-        None,
-        None,
-    ]
+def test_parse_list_unparseable_returns_none() -> None:
+    """Inputs that the parser cannot handle become ``None`` in the output list."""
+    assert date_parser.parse_list(["not a date", "garbage"]) == [None, None]
 
 
 def test_parse_list_mixed() -> None:
-    """Successful and unsuccessful parses can be interleaved."""
-    result = json.loads(
-        date_parser.parse_list(["2026-01-01", "garbage", "2026-02-02"])
-    )
-    assert result == [
+    """Successful and unsuccessful parses can be interleaved; order is preserved."""
+    assert date_parser.parse_list(["2026-01-01", "garbage", "2026-02-02"]) == [
         "2026-01-01 00:00:00+00:00",
         None,
         "2026-02-02 00:00:00+00:00",
@@ -121,8 +112,8 @@ def test_parse_list_mixed() -> None:
 
 
 def test_parse_list_empty_list() -> None:
-    """An empty input list yields an empty JSON array."""
-    assert date_parser.parse_list([]) == "[]"
+    """An empty input list yields an empty list (not an empty JSON string)."""
+    assert date_parser.parse_list([]) == []
 
 
 def test_parse_list_timestamp() -> None:
@@ -133,15 +124,15 @@ def test_parse_list_timestamp() -> None:
     component are trimmed, so 429 ms renders as ``.429``.
     """
     # 1511648546 seconds -> 2017-11-25 22:22:26 UTC.
-    assert json.loads(date_parser.parse_list(["1511648546"])) == [
+    assert date_parser.parse_list(["1511648546"]) == [
         "2017-11-25 22:22:26+00:00"
     ]
     # 1620021848429 ms -> 2021-05-03 06:04:08.429 UTC.
-    assert json.loads(date_parser.parse_list(["1620021848429"])) == [
+    assert date_parser.parse_list(["1620021848429"]) == [
         "2021-05-03 06:04:08.429+00:00"
     ]
     # 1620024872717915000 ns -> 2021-05-03 06:54:32.717915 UTC.
-    assert json.loads(date_parser.parse_list(["1620024872717915000"])) == [
+    assert date_parser.parse_list(["1620024872717915000"]) == [
         "2021-05-03 06:54:32.717915+00:00"
     ]
 
@@ -189,9 +180,10 @@ def test_parse_series_matches_parse() -> None:
     """All three parsing paths should agree on every input.
 
     This is the cross-check: ``parse`` produces an ISO-8601 string,
-    ``parse_list`` produces a JSON array of ISO-8601 strings, and
-    ``parse_series`` produces Arrow datetimes; converting each through
-    a common reference must yield identical instants for every row.
+    ``parse_list`` produces a list of ISO-8601 strings (or ``None``),
+    and ``parse_series`` produces Arrow datetimes; converting each
+    through a common reference must yield identical instants for every
+    row.
     """
     raw = [
         "2026-09-18",
@@ -203,7 +195,7 @@ def test_parse_series_matches_parse() -> None:
         "garbage",
     ]
     single_results = [date_parser.parse(r) for r in raw]
-    list_results = json.loads(date_parser.parse_list(raw))
+    list_results = date_parser.parse_list(raw)
     series_result = date_parser.parse_series(pl.Series(raw))
 
     for raw_input, single_str, list_str, dt in zip(
