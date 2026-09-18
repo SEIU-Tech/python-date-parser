@@ -28,17 +28,18 @@ from datetime import datetime, timezone
 from enum import Enum, auto
 from pathlib import Path
 
+import dateparser
+import polars as pl
+
+import date_parser
+
 # tests/data/examples.txt, resolved relative to this script's repo root.
-DEFAULT_EXAMPLES = (
-    Path(__file__).resolve().parent.parent / "tests" / "data" / "examples.txt"
-)
+DEFAULT_EXAMPLES = Path(__file__).resolve().parent.parent / "tests" / "data" / "examples.txt"
 
 # Library identifiers and their human-readable labels for the report.
 LIBRARIES: dict[str, str] = {
     "date_parser": "date_parser (Rust extension, this project) — parse() per input",
-    "date_parser_list": (
-        "date_parser (Rust extension, this project) — parse() bulk list API"
-    ),
+    "date_parser_list": ("date_parser (Rust extension, this project) — parse() bulk list API"),
     "date_parser_series": "date_parser (Rust extension, this project) — parse_series Polars API",
     "dateparser": "dateparser (Python reference, https://pypi.org/project/dateparser/)",
 }
@@ -62,9 +63,9 @@ class MismatchKind(Enum):
 
     EXPECTED_NONE_GOT_VALUE = auto()  # expected unparseable, got a value
     EXPECTED_VALUE_GOT_NONE = auto()  # expected a value, got None
-    INSTANT_DIFFERS = auto()          # both parsed, but UTC instants differ
-    EXCEPTION = auto()                # parser raised instead of returning
-    EXPECTED_UNPARSEABLE = auto()     # expected string wasn't recognizable
+    INSTANT_DIFFERS = auto()  # both parsed, but UTC instants differ
+    EXCEPTION = auto()  # parser raised instead of returning
+    EXPECTED_UNPARSEABLE = auto()  # expected string wasn't recognizable
 
 
 @dataclass(frozen=True)
@@ -115,7 +116,6 @@ def make_parser(name: str, raw_inputs: list[str]) -> Callable[[str], object]:
     """
     match name:
         case "date_parser":
-            import date_parser
 
             def parse(raw: str) -> object:
                 # The single-string API takes one input and returns either
@@ -125,8 +125,6 @@ def make_parser(name: str, raw_inputs: list[str]) -> Callable[[str], object]:
 
             return parse
         case "date_parser_list":
-            import date_parser
-
             # The list API takes the whole list in one call, so the
             # per-input ``raw`` argument is intentionally ignored.
             def parse(raw: str) -> object:
@@ -134,10 +132,6 @@ def make_parser(name: str, raw_inputs: list[str]) -> Callable[[str], object]:
 
             return parse
         case "date_parser_series":
-            import polars as pl
-
-            import date_parser
-
             series = pl.Series(raw_inputs)
 
             # The Series API operates on the whole Series per call, so
@@ -147,7 +141,6 @@ def make_parser(name: str, raw_inputs: list[str]) -> Callable[[str], object]:
 
             return parse
         case "dateparser":
-            import dateparser
 
             def parse(raw: str) -> object:
                 return dateparser.parse(raw)
@@ -379,33 +372,25 @@ def verify_parser(
         # in the examples file and gets its own mismatch kind so it isn't
         # silently swallowed.
         expected_is_none_literal = ex.expected == "None"
-        expected_unparseable = (
-            not expected_is_none_literal and expected_dt is None
-        )
+        expected_unparseable = not expected_is_none_literal and expected_dt is None
 
         if expected_unparseable and actual_dt is None:
             continue  # both unparseable; nothing to compare
         if expected_unparseable:
             mismatches.append(
-                Mismatch(
-                    i, ex, MismatchKind.EXPECTED_UNPARSEABLE, format_actual(name, actual)
-                )
+                Mismatch(i, ex, MismatchKind.EXPECTED_UNPARSEABLE, format_actual(name, actual))
             )
             continue
         if expected_is_none_literal and actual_dt is None:
             continue  # match: expected unparseable, parser also returned None
         if expected_is_none_literal:
             mismatches.append(
-                Mismatch(
-                    i, ex, MismatchKind.EXPECTED_NONE_GOT_VALUE, format_actual(name, actual)
-                )
+                Mismatch(i, ex, MismatchKind.EXPECTED_NONE_GOT_VALUE, format_actual(name, actual))
             )
             continue
         if actual_dt is None:
             mismatches.append(
-                Mismatch(
-                    i, ex, MismatchKind.EXPECTED_VALUE_GOT_NONE, format_actual(name, actual)
-                )
+                Mismatch(i, ex, MismatchKind.EXPECTED_VALUE_GOT_NONE, format_actual(name, actual))
             )
             continue
         if expected_dt != actual_dt:
@@ -523,9 +508,7 @@ def verify_bulk(
         expected_dt = parse_expected_instant(ex.expected)
         actual_dt = actual_list[i - 1]
         expected_is_none_literal = ex.expected == "None"
-        expected_unparseable = (
-            not expected_is_none_literal and expected_dt is None
-        )
+        expected_unparseable = not expected_is_none_literal and expected_dt is None
         if expected_unparseable and actual_dt is None:
             continue
         if expected_unparseable:
@@ -541,9 +524,7 @@ def verify_bulk(
             )
             continue
         if actual_dt is None:
-            mismatches.append(
-                Mismatch(i, ex, MismatchKind.EXPECTED_VALUE_GOT_NONE, "null")
-            )
+            mismatches.append(Mismatch(i, ex, MismatchKind.EXPECTED_VALUE_GOT_NONE, "null"))
             continue
         if expected_dt != actual_dt:
             mismatches.append(
@@ -552,17 +533,13 @@ def verify_bulk(
     return mismatches
 
 
-def print_verification(
-    name: str, total: int, mismatches: list[Mismatch]
-) -> None:
+def print_verification(name: str, total: int, mismatches: list[Mismatch]) -> None:
     """Print a verification report for one library."""
     if not mismatches:
         print(f"verification: {total}/{total} inputs matched expected")
         return
 
-    print(
-        f"verification: {len(mismatches)}/{total} inputs did not match expected"
-    )
+    print(f"verification: {len(mismatches)}/{total} inputs did not match expected")
     print()
     for m in mismatches:
         print(f"  [{m.index}] {m.example.raw!r}")
@@ -587,9 +564,7 @@ def main(argv: list[str] | None = None) -> int:
     # pass uses both columns, so we keep the full Example objects here.
     raw_inputs = [ex.raw for ex in examples]
 
-    selected: list[str] = (
-        list(LIBRARIES) if args.library == "both" else [args.library]
-    )
+    selected: list[str] = list(LIBRARIES) if args.library == "both" else [args.library]
 
     print(f"examples file:    {args.examples}")
     print(f"distinct inputs:  {len(raw_inputs)}")
@@ -598,16 +573,7 @@ def main(argv: list[str] | None = None) -> int:
 
     results: dict[str, tuple[float, int, int]] = {}
     for lib in selected:
-        try:
-            parse_fn = make_parser(lib, raw_inputs)
-        except ImportError as exc:
-            print(
-                f"{lib}: SKIPPED ({exc.name} is not installed; "
-                f"re-run after `uv sync` to enable)",
-                file=sys.stderr,
-            )
-            print()
-            continue
+        parse_fn = make_parser(lib, raw_inputs)
 
         elapsed, parses, failures = benchmark(
             parse_fn,
