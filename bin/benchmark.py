@@ -108,51 +108,54 @@ def make_parser(name: str, raw_inputs: list[str]) -> Callable[[str], object]:
     propagated to the caller, which decides whether to count it as a
     failure or abort.
 
-    ``raw_inputs`` is captured by closure for ``date_parser_series``: the
-    Series API doesn't fit a per-input loop, so the benchmark builds the
-    Series once and re-parses it on every call.
+    ``raw_inputs`` is captured by closure for the bulk APIs
+    (``date_parser_list``, ``date_parser_series``): those libraries don't
+    fit a per-input loop, so the benchmark builds the batch artifact once
+    and re-parses it on every call.
     """
-    if name == "date_parser":
-        import date_parser
+    match name:
+        case "date_parser":
+            import date_parser
 
-        def parse(raw: str) -> object:
-            # The single-string API takes one input and returns either an
-            # ISO-8601 string or ``None`` — no JSON encode/decode round-trip
-            # per call.
-            return date_parser.parse(raw)
+            def parse(raw: str) -> object:
+                # The single-string API takes one input and returns either
+                # an ISO-8601 string or ``None`` — no JSON encode/decode
+                # round-trip per call.
+                return date_parser.parse(raw)
 
-        return parse
-    if name == "date_parser_list":
-        import date_parser
+            return parse
+        case "date_parser_list":
+            import date_parser
 
-        # The list API takes the whole list in one call, so the per-input
-        # ``raw`` argument is intentionally ignored.
-        def parse(raw: str) -> object:
-            return date_parser.parse_list(raw_inputs)
+            # The list API takes the whole list in one call, so the
+            # per-input ``raw`` argument is intentionally ignored.
+            def parse(raw: str) -> object:
+                return date_parser.parse_list(raw_inputs)
 
-        return parse
-    if name == "date_parser_series":
-        import polars as pl
+            return parse
+        case "date_parser_series":
+            import polars as pl
 
-        import date_parser
+            import date_parser
 
-        series = pl.Series(raw_inputs)
+            series = pl.Series(raw_inputs)
 
-        # The Series API operates on the whole Series per call, so the
-        # per-input ``raw`` argument is intentionally ignored.
-        def parse(raw: str) -> object:
-            return date_parser.parse_series(series)
+            # The Series API operates on the whole Series per call, so
+            # the per-input ``raw`` argument is intentionally ignored.
+            def parse(raw: str) -> object:
+                return date_parser.parse_series(series)
 
-        return parse
-    if name == "dateparser":
-        import dateparser
+            return parse
+        case "dateparser":
+            import dateparser
 
-        def parse(raw: str) -> object:
-            return dateparser.parse(raw)
+            def parse(raw: str) -> object:
+                return dateparser.parse(raw)
 
-        return parse
-    msg = f"unknown library: {name!r}; expected one of {sorted(LIBRARIES)}"
-    raise ValueError(msg)
+            return parse
+        case _:
+            msg = f"unknown library: {name!r}; expected one of {sorted(LIBRARIES)}"
+            raise ValueError(msg)
 
 
 def is_bulk(name: str) -> bool:
