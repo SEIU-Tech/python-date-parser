@@ -63,7 +63,10 @@ def make_parser(name: str) -> Callable[[str], object]:
         import date_parser
 
         def parse(raw: str) -> object:
-            return date_parser.parse_date(raw)
+            # The Rust extension takes a list and returns a JSON string;
+            # wrap a single raw input to keep the benchmark loop uniform
+            # across libraries (one call per input).
+            return date_parser.parse([raw])
 
         return parse
     if name == "dateparser":

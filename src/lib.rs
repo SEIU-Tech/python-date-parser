@@ -1,19 +1,124 @@
-//! Python bindings for the `date-parser` extension.
+//! Python bindings for the `date_parser` extension.
 //!
-//! The placeholder `parse_date` function exists so that the build pipeline
-//! (maturin → cargo → wheel) can be verified end-to-end before the real
-//! date-parsing logic lands.
+//! Exposes a single function, [`parse`], that takes a list of raw date
+//! strings and returns a JSON-encoded array of ISO-8601 representations.
+//! Inputs that fail to parse produce `null` in the output array.
+//!
+//! Timezone note: parsing goes through `dateparser::parse_with(..., &Utc,
+//! midnight)`, so all results are normalized to UTC and date-only inputs
+//! default to midnight UTC. Pure-numeric inputs are detected and treated
+//! as Unix timestamps (seconds for 10 digits, milliseconds for 13,
+//! microseconds for 16, nanoseconds for 19) since the underlying
+//! `dateparser` crate would otherwise interpret them in the local
+//! timezone. This is a known difference from the Python `dateparser`
+//! reference, which preserves the original offset and uses the current
+//! time of day for date-only inputs.
 
+use chrono::{DateTime, NaiveTime, Utc};
 use pyo3::prelude::*;
 
+/// Format a `chrono::DateTime<Utc>` as `YYYY-MM-DD HH:MM:SS[.fff]+HH:MM`.
+///
+/// Fractional seconds are included only when non-zero, and trailing zeros
+/// are trimmed (e.g. `.052282000` -> `.052282`).
+fn format_datetime(dt: &DateTime<Utc>) -> String {
+    let base = dt.format("%Y-%m-%d %H:%M:%S%:z").to_string();
+    let nanos = dt.timestamp_subsec_nanos();
+    if nanos == 0 {
+        return base;
+    }
+    // Build "fff" without trailing zeros, then splice it in before the
+    // timezone offset.
+    let frac_str = format!("{:09}", nanos);
+    let frac = frac_str.trim_end_matches('0');
+    // Find the trailing timezone offset (last '+' or '-' before the end).
+    let tz_idx = base.rfind(['+', '-']).unwrap_or(base.len());
+    let (head, tail) = base.split_at(tz_idx);
+    format!("{}.{}{}", head, frac, tail)
+}
+
+/// Encode a list of optional strings as a JSON array.
+///
+/// Strings are escaped per RFC 8259; `None` values become `null`.
+fn to_json_array(items: &[Option<String>]) -> String {
+    let mut out = String::with_capacity(items.len() * 16);
+    out.push('[');
+    for (i, item) in items.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        match item {
+            Some(s) => {
+                out.push('"');
+                for c in s.chars() {
+                    match c {
+                        '"' => out.push_str("\\\""),
+                        '\\' => out.push_str("\\\\"),
+                        '\n' => out.push_str("\\n"),
+                        '\r' => out.push_str("\\r"),
+                        '\t' => out.push_str("\\t"),
+                        c if (c as u32) < 0x20 => {
+                            use std::fmt::Write as _;
+                            let _ = write!(out, "\\u{:04x}", c as u32);
+                        }
+                        c => out.push(c),
+                    }
+                }
+                out.push('"');
+            }
+            None => out.push_str("null"),
+        }
+    }
+    out.push(']');
+    out
+}
+
+/// Attempt to interpret ``raw`` as a Unix timestamp based on digit count.
+///
+/// The ``dateparser`` crate interprets pure-numeric strings in the local
+/// timezone, which is rarely what we want. Detect them here and convert
+/// explicitly to UTC.
+fn try_unix_timestamp(raw: &str) -> Option<DateTime<Utc>> {
+    if !raw.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let n: i64 = raw.parse().ok()?;
+    // Heuristic by digit count: 10=seconds, 13=ms, 16=µs, 19=ns.
+    let (secs, nanos) = match raw.len() {
+        10 => (n, 0_u32),
+        13 => (n / 1000, ((n % 1000) * 1_000_000) as u32),
+        16 => (n / 1_000_000, ((n % 1_000_000) * 1_000) as u32),
+        19 => (n / 1_000_000_000, (n % 1_000_000_000) as u32),
+        _ => return None,
+    };
+    DateTime::<Utc>::from_timestamp(secs, nanos)
+}
+
+/// Parse a list of raw date strings and return a JSON array of ISO-8601 strings.
+///
+/// Each input is parsed independently by the [`dateparser`] crate; inputs
+/// that fail to parse produce `null` in the corresponding output slot.
+///
+/// All parsed datetimes are normalized to UTC. Date-only inputs (e.g.
+/// `"2026-09-18"`) default to midnight UTC rather than the current time.
+/// Pure-numeric inputs are detected as Unix timestamps and treated as UTC.
 #[pyfunction]
-fn parse_date(text: &str) -> PyResult<String> {
-    // TODO: replace with actual date-parsing logic.
-    Ok(text.to_owned())
+fn parse(raw_dates: Vec<String>) -> PyResult<String> {
+    let midnight = NaiveTime::from_hms_opt(0, 0, 0)
+        .expect("00:00:00 is a valid NaiveTime; qed");
+    let results: Vec<Option<String>> = raw_dates
+        .iter()
+        .map(|raw| {
+            try_unix_timestamp(raw)
+                .or_else(|| dateparser::parse_with(raw, &Utc, midnight).ok())
+                .map(|dt| format_datetime(&dt))
+        })
+        .collect();
+    Ok(to_json_array(&results))
 }
 
 #[pymodule]
 mod date_parser {
     #[pymodule_export]
-    use super::parse_date;
+    use super::parse;
 }

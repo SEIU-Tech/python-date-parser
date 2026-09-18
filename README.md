@@ -4,9 +4,26 @@ Perform fast fuzzy parsing of dates in varying formats.
 
 ## Status
 
-Initial scaffold only. The Rust extension currently exposes a single
-placeholder function (`parse_date`) so the build pipeline can be verified
-end-to-end. Real date-parsing logic has not yet been implemented.
+The Rust extension parses raw date strings into ISO-8601 representations
+using the [`dateparser`](https://docs.rs/dateparser/0.3.1/dateparser/)
+crate. The single public function is `parse(raw_dates: list[str]) -> str`
+— it accepts a list of raw date strings and returns a JSON-encoded array
+of ISO-8601 strings (or `null` for inputs the parser can't handle).
+
+```python
+>>> import json, date_parser
+>>> json.loads(date_parser.parse(["2026-01-01", "garbage", "06/15/2024"]))
+['2026-01-01 00:00:00+00:00', None, '2024-06-15 00:00:00+00:00']
+```
+
+**Note:** parsed datetimes are normalized to UTC (`+00:00`), matching the
+behavior of the `dateparser` Rust crate. The Python `dateparser` library
+preserves the original timezone offset; we don't (yet).
+
+Pure-numeric inputs (e.g. `"1511648546"`) are interpreted as Unix
+timestamps and forced to UTC: 10 digits = seconds, 13 = milliseconds,
+16 = microseconds, 19 = nanoseconds. The Python `dateparser` library
+interprets these in the local timezone instead.
 
 ## Installation
 
