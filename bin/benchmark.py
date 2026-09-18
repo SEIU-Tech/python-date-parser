@@ -116,10 +116,10 @@ def make_parser(name: str, raw_inputs: list[str]) -> Callable[[str], object]:
         import date_parser
 
         def parse(raw: str) -> object:
-            # The Rust extension takes a list and returns a JSON string;
-            # wrap a single raw input to keep the benchmark loop uniform
-            # across libraries (one call per input).
-            return date_parser.parse([raw])
+            # The single-string API takes one input and returns either an
+            # ISO-8601 string or ``None`` — no JSON encode/decode round-trip
+            # per call.
+            return date_parser.parse(raw)
 
         return parse
     if name == "date_parser_list":
@@ -128,7 +128,7 @@ def make_parser(name: str, raw_inputs: list[str]) -> Callable[[str], object]:
         # The list API takes the whole list in one call, so the per-input
         # ``raw`` argument is intentionally ignored.
         def parse(raw: str) -> object:
-            return date_parser.parse(raw_inputs)
+            return date_parser.parse_list(raw_inputs)
 
         return parse
     if name == "date_parser_series":
@@ -303,24 +303,18 @@ def parse_expected_instant(expected: str) -> datetime | None:
 def to_actual_instant(name: str, actual: object) -> datetime | None:
     """Convert a parser's raw output into a UTC datetime, or ``None``.
 
-    ``date_parser`` returns a JSON array of strings or ``null``; the
-    first element is unwrapped. ``dateparser`` returns a datetime or
-    ``None``. Both naive and timezone-aware outputs are normalized to
-    UTC so they can be compared against :func:`parse_expected_instant`.
+    ``date_parser`` (single-string API) returns either an ISO-8601
+    string or ``None``; we normalize the string the same way as the
+    expected column. ``dateparser`` returns a datetime or ``None``.
+    Both naive and timezone-aware outputs are normalized to UTC so
+    they can be compared against :func:`parse_expected_instant`.
     """
     if name == "date_parser":
+        if actual is None:
+            return None
         if not isinstance(actual, str):
             return None
-        try:
-            decoded = json.loads(actual)
-        except json.JSONDecodeError:
-            return None
-        if not isinstance(decoded, list) or not decoded:
-            return None
-        first = decoded[0]
-        if first is None:
-            return None
-        return parse_expected_instant(first)
+        return parse_expected_instant(actual)
     if name == "dateparser":
         if actual is None or not isinstance(actual, datetime):
             return None
@@ -333,14 +327,10 @@ def to_actual_instant(name: str, actual: object) -> datetime | None:
 def format_actual(name: str, actual: object) -> str:
     """Render a parser's raw output as a single-line string for display."""
     if name == "date_parser":
+        if actual is None:
+            return "null"
         if isinstance(actual, str):
-            try:
-                decoded = json.loads(actual)
-            except json.JSONDecodeError:
-                return repr(actual)
-            if isinstance(decoded, list) and decoded:
-                inner = decoded[0]
-                return "null" if inner is None else str(inner)
+            return actual
         return repr(actual)
     if name == "dateparser":
         if actual is None:

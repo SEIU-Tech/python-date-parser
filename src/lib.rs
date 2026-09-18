@@ -1,9 +1,11 @@
 //! Python bindings for the `date_parser` extension.
 //!
-//! Exposes two functions:
+//! Exposes three functions:
 //!
-//! - [`parse`] takes a Python list of raw date strings and returns a
-//!   JSON-encoded array of ISO-8601 representations. Inputs that fail
+//! - [`parse`] parses a single raw date string and returns its ISO-8601
+//!   representation (or `None` if the input cannot be parsed).
+//! - [`parse_list`] takes a Python list of raw date strings and returns
+//!   a JSON-encoded array of ISO-8601 representations. Inputs that fail
 //!   to parse produce `null` in the output array.
 //! - [`parse_series`] takes a Polars `Series` of string dtype and
 //!   returns a Polars `Series` of `pl.Datetime("ns")`. It works
@@ -179,6 +181,20 @@ fn parse_one(raw: &str, midnight: NaiveTime) -> Option<DateTime<Utc>> {
         .or_else(|| dateparser::parse_with(&normalized, &Utc, midnight).ok())
 }
 
+/// Parse a single raw date string and return its ISO-8601 representation.
+///
+/// Returns ``None`` if the input cannot be parsed by the underlying
+/// parser. The same UTC normalization rules as [`parse_list`] apply:
+/// date-only inputs default to midnight UTC, pure-numeric inputs are
+/// treated as Unix timestamps, and ISO-8601 ``T``-separated datetimes
+/// without an offset are normalized to a space separator first.
+#[pyfunction]
+fn parse(raw: &str) -> Option<String> {
+    let midnight = NaiveTime::from_hms_opt(0, 0, 0)
+        .expect("00:00:00 is a valid NaiveTime; qed");
+    parse_one(raw, midnight).map(|dt| format_datetime(&dt))
+}
+
 /// Parse a list of raw date strings and return a JSON array of ISO-8601 strings.
 ///
 /// Each input is parsed independently by the [`dateparser`] crate; inputs
@@ -191,7 +207,7 @@ fn parse_one(raw: &str, midnight: NaiveTime) -> Option<DateTime<Utc>> {
 /// `"2026-09-18T01:02:03"`) are normalized to a space separator before
 /// being handed to the parser.
 #[pyfunction]
-fn parse(raw_dates: Vec<String>) -> PyResult<String> {
+fn parse_list(raw_dates: Vec<String>) -> PyResult<String> {
     let midnight = NaiveTime::from_hms_opt(0, 0, 0)
         .expect("00:00:00 is a valid NaiveTime; qed");
     let results: Vec<Option<String>> = raw_dates
@@ -255,6 +271,8 @@ fn parse_series(pys: PySeries) -> PyResult<PySeries> {
 mod date_parser {
     #[pymodule_export]
     use super::parse;
+    #[pymodule_export]
+    use super::parse_list;
     #[pymodule_export]
     use super::parse_series;
 }
