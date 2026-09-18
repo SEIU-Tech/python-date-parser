@@ -216,3 +216,18 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Rust
+/target
+
+# maturin build artifacts (live alongside the Python wrapper source)
+date_parser/*.so
+date_parser/*.pyd
+
+# MkDocs
+/site
+
+# uv (project venv lives here)
+.venv/
+
+

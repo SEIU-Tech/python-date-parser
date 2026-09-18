@@ -1,0 +1,23 @@
+[package]
+name = "date-parser"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "BSD-2-Clause"
+description = "Fast fuzzy parsing of dates in varying formats."
+publish = false
+
+[lib]
+name = "_date_parser"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.29", features = ["abi3-py310"] }
+
+[features]
+extension-module = ["pyo3/extension-module"]
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

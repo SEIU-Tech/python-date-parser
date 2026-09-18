@@ -1,0 +1,16 @@
+site_name: python-date-parser
+site_description: Fast fuzzy parsing of dates in varying formats
+repo_url: https://github.com/SEIU-Tech/python-date-parser
+
+theme:
+  name: material
+  features:
+    - content.code.copy
+
+nav:
+  - Home: index.md
+
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
