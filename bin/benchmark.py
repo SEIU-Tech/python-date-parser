@@ -36,6 +36,7 @@ DEFAULT_EXAMPLES = (
 # Library identifiers and their human-readable labels for the report.
 LIBRARIES: dict[str, str] = {
     "date_parser": "date_parser (Rust extension, this project)",
+    "date_parser_series": "date_parser (Rust extension, this project) — parse_series Polars API",
     "dateparser": "dateparser (Python reference, https://pypi.org/project/dateparser/)",
 }
 
@@ -96,13 +97,17 @@ def load_examples(path: Path) -> list[Example]:
     return examples
 
 
-def make_parser(name: str) -> Callable[[str], object]:
+def make_parser(name: str, raw_inputs: list[str]) -> Callable[[str], object]:
     """Return a parser function for the named library.
 
     The returned callable accepts a single ``str`` and returns whatever the
     underlying library produces. Any exception raised by the library is
     propagated to the caller, which decides whether to count it as a
     failure or abort.
+
+    ``raw_inputs`` is captured by closure for ``date_parser_series``: the
+    Series API doesn't fit a per-input loop, so the benchmark builds the
+    Series once and re-parses it on every call.
     """
     if name == "date_parser":
         import date_parser
@@ -112,6 +117,19 @@ def make_parser(name: str) -> Callable[[str], object]:
             # wrap a single raw input to keep the benchmark loop uniform
             # across libraries (one call per input).
             return date_parser.parse([raw])
+
+        return parse
+    if name == "date_parser_series":
+        import polars as pl
+
+        import date_parser
+
+        series = pl.Series(raw_inputs)
+
+        # The Series API operates on the whole Series per call, so the
+        # per-input ``raw`` argument is intentionally ignored.
+        def parse(raw: str) -> object:
+            return date_parser.parse_series(series)
 
         return parse
     if name == "dateparser":
@@ -125,8 +143,34 @@ def make_parser(name: str) -> Callable[[str], object]:
     raise ValueError(msg)
 
 
-def run_calls(parse: Callable[[str], object], raw_inputs: Iterable[str]) -> int:
-    """Call ``parse`` on each input; return the failure count."""
+def is_per_series(name: str) -> bool:
+    """Return True if the library operates on a whole Series per call.
+
+    The ``parse_series`` Polars API parses the entire Series in one call
+    rather than per-element, so the benchmark loop and throughput
+    accounting have to treat it differently from the per-input APIs.
+    """
+    return name == "date_parser_series"
+
+
+def run_calls(
+    parse: Callable[[str], object],
+    raw_inputs: Iterable[str],
+    per_series: bool,
+) -> int:
+    """Drive the parser; return the failure count.
+
+    For per-input libraries we call ``parse`` once for every raw input.
+    For per-Series libraries (``date_parser_series``) we call ``parse``
+    once per ``run_calls`` invocation — it parses the entire Series in
+    one shot and the per-input argument is ignored.
+    """
+    if per_series:
+        try:
+            parse("")
+        except Exception:  # benchmark must not abort on parse errors
+            return 1
+        return 0
     failures = 0
     for raw in raw_inputs:
         try:
@@ -141,13 +185,19 @@ def benchmark(
     raw_inputs: list[str],
     iterations: int,
     warmup: int,
+    per_series: bool = False,
 ) -> tuple[float, int, int]:
     """Run ``iterations`` timed passes plus ``warmup`` warmup passes.
+
+    ``total_parses`` always reports *elements* processed (per-input
+    libraries count 1 per call; per-Series libraries count the Series
+    length per call) so throughput figures are comparable across the
+    two styles.
 
     Returns ``(elapsed_seconds, total_parses, failures)``.
     """
     for _ in range(warmup):
-        run_calls(parse, raw_inputs)
+        run_calls(parse, raw_inputs, per_series)
 
     total_parses = 0
     failures = 0
@@ -155,7 +205,11 @@ def benchmark(
     for _ in range(iterations):
         # Accumulate per-iteration failures so a bad input never poisons
         # the whole run.
-        failures += run_calls(parse, raw_inputs)
+        failures += run_calls(parse, raw_inputs, per_series)
+        # Both styles process one Series-worth of elements per iteration:
+        # per-input libraries do ``len(raw_inputs)`` calls each handling
+        # one element; per-Series libraries do a single call that
+        # processes them all at once.
         total_parses += len(raw_inputs)
     elapsed = time.perf_counter() - start
     return elapsed, total_parses, failures
@@ -175,7 +229,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--library",
         "-l",
-        choices=("date_parser", "dateparser", "both"),
+        choices=("date_parser", "date_parser_series", "dateparser", "both"),
         default="both",
         help="Which library to benchmark (default: both)",
     )
@@ -398,7 +452,7 @@ def main(argv: list[str] | None = None) -> int:
     results: dict[str, tuple[float, int, int]] = {}
     for lib in selected:
         try:
-            parse_fn = make_parser(lib)
+            parse_fn = make_parser(lib, raw_inputs)
         except ImportError as exc:
             print(
                 f"{lib}: SKIPPED ({exc.name} is not installed; "
@@ -409,7 +463,11 @@ def main(argv: list[str] | None = None) -> int:
             continue
 
         elapsed, parses, failures = benchmark(
-            parse_fn, raw_inputs, args.iterations, args.warmup
+            parse_fn,
+            raw_inputs,
+            args.iterations,
+            args.warmup,
+            per_series=is_per_series(lib),
         )
         results[lib] = (elapsed, parses, failures)
 
@@ -422,11 +480,14 @@ def main(argv: list[str] | None = None) -> int:
 
         # Verification runs after the timed loop so the throughput numbers
         # above reflect only parsing work, not the comparison overhead.
-        mismatches = verify_parser(lib, parse_fn, examples)
-        print_verification(lib, len(examples), mismatches)
-        print()
+        # The Series API doesn't fit a per-input comparison, so we skip
+        # the report for that library.
+        if lib != "date_parser_series":
+            mismatches = verify_parser(lib, parse_fn, examples)
+            print_verification(lib, len(examples), mismatches)
+            print()
 
-    if len(results) == 2:
+    if "date_parser" in results and "dateparser" in results:
         a_elapsed, _, _ = results["date_parser"]
         b_elapsed, _, _ = results["dateparser"]
         if a_elapsed > 0 and b_elapsed > 0:

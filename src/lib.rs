@@ -1,8 +1,15 @@
 //! Python bindings for the `date_parser` extension.
 //!
-//! Exposes a single function, [`parse`], that takes a list of raw date
-//! strings and returns a JSON-encoded array of ISO-8601 representations.
-//! Inputs that fail to parse produce `null` in the output array.
+//! Exposes two functions:
+//!
+//! - [`parse`] takes a Python list of raw date strings and returns a
+//!   JSON-encoded array of ISO-8601 representations. Inputs that fail
+//!   to parse produce `null` in the output array.
+//! - [`parse_series`] takes a Polars `Series` of string dtype and
+//!   returns a Polars `Series` of `pl.Datetime("ns")`. It works
+//!   directly on the underlying Arrow buffer via `pyo3-polars`, so
+//!   there is no Python-level iteration. Unparseable strings become
+//!   null values in the output series.
 //!
 //! Timezone note: parsing goes through `dateparser::parse_with(..., &Utc,
 //! midnight)`, so all results are normalized to UTC and date-only inputs
@@ -18,7 +25,10 @@
 //! date-only inputs.
 
 use chrono::{DateTime, NaiveTime, Utc};
+use polars::prelude::*;
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use pyo3_polars::PySeries;
 
 /// Format a `chrono::DateTime<Utc>` as `YYYY-MM-DD HH:MM:SS[.fff]+HH:MM`.
 ///
@@ -158,6 +168,17 @@ fn normalize_iso8601_separator(raw: &str) -> std::borrow::Cow<'_, str> {
     }
 }
 
+/// Parse one raw date string into a UTC datetime, or ``None`` on failure.
+///
+/// Centralizes the parse pipeline so [`parse`] and [`parse_series`] stay
+/// in sync: ISO-8601 separator normalization, Unix-timestamp fast path,
+/// then `dateparser::parse_with` as the final fallback.
+fn parse_one(raw: &str, midnight: NaiveTime) -> Option<DateTime<Utc>> {
+    let normalized = normalize_iso8601_separator(raw);
+    try_unix_timestamp(&normalized)
+        .or_else(|| dateparser::parse_with(&normalized, &Utc, midnight).ok())
+}
+
 /// Parse a list of raw date strings and return a JSON array of ISO-8601 strings.
 ///
 /// Each input is parsed independently by the [`dateparser`] crate; inputs
@@ -175,18 +196,65 @@ fn parse(raw_dates: Vec<String>) -> PyResult<String> {
         .expect("00:00:00 is a valid NaiveTime; qed");
     let results: Vec<Option<String>> = raw_dates
         .iter()
-        .map(|raw| {
-            let normalized = normalize_iso8601_separator(raw);
-            try_unix_timestamp(&normalized)
-                .or_else(|| dateparser::parse_with(&normalized, &Utc, midnight).ok())
-                .map(|dt| format_datetime(&dt))
-        })
+        .map(|raw| parse_one(raw, midnight).map(|dt| format_datetime(&dt)))
         .collect();
     Ok(to_json_array(&results))
+}
+
+/// Parse a Polars string Series into a Datetime Series at Arrow speed.
+///
+/// The input must be a Series with `pl.String` dtype. The output is a
+/// Series with `pl.Datetime("ns")` (naive UTC, nanosecond precision):
+/// the same instant as the existing JSON-returning [`parse`] function,
+/// just expressed as native Polars/Arrow storage instead of ISO-8601
+/// strings. Unparseable strings become null values rather than
+/// rejecting the whole Series.
+///
+/// This entry point goes through the `pyo3-polars` FFI, so the
+/// underlying Arrow buffer is handed to Rust without any Python-level
+/// iteration or list materialization. The Rust side walks the
+/// `StringChunked` directly, builds an `Int64` chunked array of
+/// nanosecond timestamps, then casts it to the `Datetime` dtype.
+#[pyfunction]
+fn parse_series(pys: PySeries) -> PyResult<PySeries> {
+    let series: Series = pys.into();
+    let str_ca = series
+        .str()
+        .map_err(|e| PyValueError::new_err(format!("expected String Series, got {:?}: {e}", series.dtype())))?;
+
+    let midnight = NaiveTime::from_hms_opt(0, 0, 0)
+        .expect("00:00:00 is a valid NaiveTime; qed");
+
+    // Build nanoseconds directly. ``None`` becomes a real Arrow null,
+    // not a sentinel zero, so the resulting Datetime Series preserves
+    // the null bitmap.
+    let mut builder = PrimitiveChunkedBuilder::<Int64Type>::new(
+        PlSmallStr::from_static("parsed_datetime"),
+        str_ca.len(),
+    );
+    for opt_s in str_ca.iter() {
+        match opt_s.and_then(|s| parse_one(s, midnight)) {
+            Some(dt) => match dt.timestamp_nanos_opt() {
+                Some(nanos) => builder.append_value(nanos),
+                None => builder.append_null(), // year > ~2262, beyond i64 nanos
+            },
+            None => builder.append_null(),
+        }
+    }
+
+    let int_series: Series = builder.finish().into_series();
+    let datetime_dtype = DataType::Datetime(TimeUnit::Nanoseconds, None);
+    let out = int_series
+        .cast(&datetime_dtype)
+        .map_err(|e| PyValueError::new_err(format!("cast to Datetime failed: {e}")))?;
+
+    Ok(PySeries(out))
 }
 
 #[pymodule]
 mod date_parser {
     #[pymodule_export]
     use super::parse;
+    #[pymodule_export]
+    use super::parse_series;
 }

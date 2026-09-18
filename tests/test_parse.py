@@ -1,4 +1,7 @@
 import json
+from datetime import datetime
+
+import polars as pl
 
 import date_parser
 
@@ -86,3 +89,77 @@ def test_parse_timestamp() -> None:
     assert json.loads(date_parser.parse(["1620024872717915000"])) == [
         "2021-05-03 06:54:32.717915+00:00"
     ]
+
+
+def test_parse_series_basic() -> None:
+    """A string Series should parse into a Datetime Series with the right dtype."""
+    s = pl.Series(["2026-09-18", "garbage", "2026-09-18T01:02:03", "1511648546"])
+    result = date_parser.parse_series(s)
+    assert result.dtype == pl.Datetime("ns")
+    assert result.to_list() == [
+        datetime(2026, 9, 18, 0, 0, 0),
+        None,
+        datetime(2026, 9, 18, 1, 2, 3),
+        datetime(2017, 11, 25, 22, 22, 26),
+    ]
+    assert result.null_count() == 1
+
+
+def test_parse_series_empty() -> None:
+    """An empty Series should produce an empty Datetime Series."""
+    s = pl.Series([], dtype=pl.String)
+    result = date_parser.parse_series(s)
+    assert result.dtype == pl.Datetime("ns")
+    assert len(result) == 0
+
+
+def test_parse_series_all_parseable() -> None:
+    """A Series of all-parseable strings should yield no nulls."""
+    s = pl.Series(["2026-09-18", "2026-09-18 01:02:03", "2026-09-18T01:02:03Z"])
+    result = date_parser.parse_series(s)
+    assert result.dtype == pl.Datetime("ns")
+    assert result.null_count() == 0
+    assert len(result) == 3
+
+
+def test_parse_series_all_null_input() -> None:
+    """Nulls in the input propagate as nulls in the output."""
+    s = pl.Series([None, None, None], dtype=pl.String)
+    result = date_parser.parse_series(s)
+    assert result.dtype == pl.Datetime("ns")
+    assert result.null_count() == 3
+
+
+def test_parse_series_matches_parse() -> None:
+    """The Series and list APIs should agree on every input.
+
+    This is the cross-check: ``parse`` produces ISO-8601 strings and
+    ``parse_series`` produces Arrow datetimes; converting each through
+    a common reference must yield identical instants for every row.
+    """
+    raw = [
+        "2026-09-18",
+        "2026-09-18 01:02:03",
+        "2026-09-18T01:02:03",
+        "2026-09-18T01:02:03Z",
+        "2026-09-18T01:02:03+05:30",
+        "2026-09-18 13:31:15 PST",
+        "garbage",
+    ]
+    list_results = json.loads(date_parser.parse(raw))
+    series_result = date_parser.parse_series(pl.Series(raw))
+
+    for raw_input, list_str, dt in zip(
+        raw, list_results, series_result.to_list(), strict=False
+    ):
+        if list_str is None:
+            assert dt is None, f"parse() returned None for {raw_input!r} but parse_series did not"
+            continue
+        # ``parse()`` emits an aware ISO-8601 string (`+00:00`); the
+        # ``Datetime("ns")`` Series is naive. Both encode the same UTC
+        # instant — compare by replacing the tzinfo with ``None``.
+        expected = datetime.fromisoformat(list_str).replace(tzinfo=None)
+        assert dt == expected, (
+            f"mismatch for {raw_input!r}: parse() -> {list_str!r}, "
+            f"parse_series -> {dt!r}"
+        )

@@ -23,6 +23,7 @@ classifiers = [
 ]
 dependencies = [
     "dateparser>=1.4.3",
+    "polars>=1.44.2",
 ]
 
 [project.optional-dependencies]
