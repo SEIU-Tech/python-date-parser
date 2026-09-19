@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "gnosis-date-parser"
-version = "1.0.1"
+version = "1.0.2"
 description = "Fast fuzzy parsing of dates in varying formats."
 readme = "README.md"
 license = "BSD-2-Clause"

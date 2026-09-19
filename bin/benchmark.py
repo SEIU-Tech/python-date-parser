@@ -33,14 +33,15 @@ import polars as pl
 import date_parser
 
 # tests/data/examples.txt, resolved relative to this script's repo root.
-DEFAULT_EXAMPLES = Path(__file__).resolve().parent.parent / "tests" / "data" / "examples.txt"
+here = Path(__file__).resolve()
+DEFAULT_EXAMPLES = here.parent.parent / "tests" / "data" / "examples.txt"
 
 # Library identifiers and their human-readable labels for the report.
 LIBRARIES: dict[str, str] = {
-    "date_parser": "date_parser (Rust extension, this project) — parse() per input",
-    "date_parser_list": ("date_parser (Rust extension, this project) — parse() bulk list API"),
-    "date_parser_series": "date_parser (Rust extension, this project) — parse_series Polars API",
-    "dateparser": "dateparser (Python reference, https://pypi.org/project/dateparser/)",
+    "date_parser": "date_parser (this project) — parse() per input",
+    "date_parser_list": "date_parser (this project) — parse_list bulk API",
+    "date_parser_series": "date_parser (this project) — parse_series Polars API",
+    "dateparser": "dateparser (https://pypi.org/project/dateparser/)",
 }
 
 # A literal 'YYYY-MM-DD' has no time component; the expected column in
@@ -125,7 +126,7 @@ def make_parser(name: str, raw_inputs: list[str]) -> Callable[[str], object]:
         case "date_parser_list":
             # The list API takes the whole list in one call, so the
             # per-input ``raw`` argument is intentionally ignored.
-            def parse(raw: str) -> object:
+            def parse(_raw: str) -> object:
                 return date_parser.parse_list(raw_inputs)
 
             return parse
@@ -134,7 +135,7 @@ def make_parser(name: str, raw_inputs: list[str]) -> Callable[[str], object]:
 
             # The Series API operates on the whole Series per call, so
             # the per-input ``raw`` argument is intentionally ignored.
-            def parse(raw: str) -> object:
+            def parse(_raw: str) -> object:
                 return date_parser.parse_series(series)
 
             return parse
@@ -376,24 +377,44 @@ def verify_parser(
             continue  # both unparseable; nothing to compare
         if expected_unparseable:
             mismatches.append(
-                Mismatch(i, ex, MismatchKind.EXPECTED_UNPARSEABLE, format_actual(name, actual))
+                Mismatch(
+                    i,
+                    ex,
+                    MismatchKind.EXPECTED_UNPARSEABLE,
+                    format_actual(name, actual),
+                )
             )
             continue
         if expected_is_none_literal and actual_dt is None:
             continue  # match: expected unparseable, parser also returned None
         if expected_is_none_literal:
             mismatches.append(
-                Mismatch(i, ex, MismatchKind.EXPECTED_NONE_GOT_VALUE, format_actual(name, actual))
+                Mismatch(
+                    i,
+                    ex,
+                    MismatchKind.EXPECTED_NONE_GOT_VALUE,
+                    format_actual(name, actual),
+                )
             )
             continue
         if actual_dt is None:
             mismatches.append(
-                Mismatch(i, ex, MismatchKind.EXPECTED_VALUE_GOT_NONE, format_actual(name, actual))
+                Mismatch(
+                    i,
+                    ex,
+                    MismatchKind.EXPECTED_VALUE_GOT_NONE,
+                    format_actual(name, actual),
+                )
             )
             continue
         if expected_dt != actual_dt:
             mismatches.append(
-                Mismatch(i, ex, MismatchKind.INSTANT_DIFFERS, format_actual(name, actual))
+                Mismatch(
+                    i,
+                    ex,
+                    MismatchKind.INSTANT_DIFFERS,
+                    format_actual(name, actual),
+                )
             )
             continue
         # else: the UTC instants match.
@@ -483,7 +504,7 @@ def verify_bulk(
                 index=0,
                 example=examples[0] if examples else Example(raw="", expected="None"),
                 kind=MismatchKind.EXCEPTION,
-                actual_repr=f"<unrecognized bulk result: {format_actual(name, actual)!r}>",
+                actual_repr=(f"<unrecognized result:{format_actual(name, actual)!r}>"),
             )
         ]
 
@@ -507,18 +528,30 @@ def verify_bulk(
             continue
         if expected_unparseable:
             mismatches.append(
-                Mismatch(i, ex, MismatchKind.EXPECTED_UNPARSEABLE, repr(actual_list[i - 1]))
+                Mismatch(
+                    i,
+                    ex,
+                    MismatchKind.EXPECTED_UNPARSEABLE,
+                    repr(actual_list[i - 1]),
+                )
             )
             continue
         if expected_is_none_literal and actual_dt is None:
             continue
         if expected_is_none_literal:
             mismatches.append(
-                Mismatch(i, ex, MismatchKind.EXPECTED_NONE_GOT_VALUE, repr(actual_list[i - 1]))
+                Mismatch(
+                    i,
+                    ex,
+                    MismatchKind.EXPECTED_NONE_GOT_VALUE,
+                    repr(actual_list[i - 1]),
+                )
             )
             continue
         if actual_dt is None:
-            mismatches.append(Mismatch(i, ex, MismatchKind.EXPECTED_VALUE_GOT_NONE, "null"))
+            mismatches.append(
+                Mismatch(i, ex, MismatchKind.EXPECTED_VALUE_GOT_NONE, "null"),
+            )
             continue
         if expected_dt != actual_dt:
             mismatches.append(
@@ -527,7 +560,7 @@ def verify_bulk(
     return mismatches
 
 
-def print_verification(name: str, total: int, mismatches: list[Mismatch]) -> None:
+def print_verification(_name: str, total: int, mismatches: list[Mismatch]) -> None:
     """Print a verification report for one library."""
     if not mismatches:
         print(f"verification: {total}/{total} inputs matched expected")

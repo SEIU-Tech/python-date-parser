@@ -45,13 +45,13 @@ crates it uses.
 
 - `parse(raw: str) -> str | None` — accepts a single raw date string
   and returns its ISO-8601 representation (or `None` for inputs the
-  parser can't handle). No JSON encoding round-trip.
+  parser can't handle).
 
 - `parse_list(raw_dates: list[str]) -> list[str | None]` — accepts a
   list of raw date strings and returns a list of ISO-8601 strings (or
   `None` for inputs the parser can't handle). The returned list matches
   the input length and order. This is the bulk-list path: one Rust
-  call for the whole list, no JSON encoding involved.
+  call for the whole list.
 
 - `parse_series(s: pl.Series) -> pl.Series` — accepts a Polars Series
   of string dtype and returns a Polars Series of `pl.Datetime("ns")`
@@ -137,7 +137,7 @@ date_parser (Rust extension, this project) — parse() per input:
 
 verification: 95/95 inputs matched expected
 
-date_parser (Rust extension, this project) — parse() bulk list API:
+date_parser (Rust extension, this project) — parse_list bulk API:
   total parses:   475
   failed parses:  0
   elapsed:        0.000 s
