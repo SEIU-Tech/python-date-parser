@@ -115,12 +115,12 @@ uv run python bin/benchmark.py -n 10
 
 The `--library` choices map to the underlying APIs as follows:
 
-| `--library`           | API exercised                              | Calls per iteration |
-| --------------------- | ------------------------------------------ | ------------------- |
-| `date_parser`         | `date_parser.parse(s)` (per input)         | `len(raw_inputs)`   |
-| `date_parser_list`    | `date_parser.parse_list(list)` (bulk)      | `1`                 |
-| `date_parser_series`  | `date_parser.parse_series(s)` (Polars/Arrow) | `1`               |
-| `dateparser`          | `dateparser.parse(s)` (per input, Python)  | `len(raw_inputs)`   |
+| `--library`           | API exercised             | Calls per iteration |
+| --------------------- | --------------------------| ------------------- |
+| `date_parser`         | `parse(s)` (per input)    | `len(raw_inputs)`   |
+| `date_parser_list`    | `parse_list(list)` (bulk) | `1`                 |
+| `date_parser_series`  | `parse_series(s)` (Arrow) | `1`                 |
+| `dateparser`          | `dateparser.parse(s)`     | `len(raw_inputs)`   |
 
 After each timed run the script verifies the parsed output against the
 expected ISO-8601 values in `tests/data/examples.txt` and prints any
