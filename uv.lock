@@ -351,7 +351,7 @@ wheels = [
 
 [[package]]
 name = "gnosis-date-parser"
-version = "1.0.0"
+version = "1.0.2"
 source = { editable = "." }
 dependencies = [
     { name = "dateparser" },

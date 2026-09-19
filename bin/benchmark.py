@@ -36,6 +36,11 @@ import date_parser
 here = Path(__file__).resolve()
 DEFAULT_EXAMPLES = here.parent.parent / "tests" / "data" / "examples.txt"
 
+# Need today for time-only formats (timezone is whatever `date_parser` says)
+TODAY = date_parser.parse("01:01:01").split(" ")[0]
+PST = date_parser.parse("01:01:01 PST").split(" ")[0]
+DAY = TODAY.split("-")[-1]
+
 # Library identifiers and their human-readable labels for the report.
 LIBRARIES: dict[str, str] = {
     "date_parser": "date_parser (this project) — parse() per input",
@@ -97,7 +102,16 @@ def load_examples(path: Path) -> list[Example]:
         parts = stripped.split("\t", 1)
         if len(parts) < 2:
             continue
-        examples.append(Example(raw=parts[0].strip(), expected=parts[1].strip()))
+        target = parts[1].strip()
+        target = target.replace("<TODAY>", TODAY)
+        target = target.replace("<PST>", PST)
+        target = target.replace("<DAY>", DAY)
+        examples.append(
+            Example(
+                raw=parts[0].strip(),
+                expected=target,
+            )
+        )
     return examples
 
 

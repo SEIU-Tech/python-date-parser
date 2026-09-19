@@ -1,4 +1,4 @@
-# python-date-parser
+# gnosis-date-parser
 
 Perform fast fuzzy parsing of dates in varying formats.
 
