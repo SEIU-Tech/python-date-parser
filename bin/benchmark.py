@@ -185,23 +185,23 @@ def make_parser(name: str, raw_inputs: list[str]) -> Callable[[str], object]:
             # bypasses that filter.
             if dateparser is None:
                 raise RuntimeError(
-                    "dateparser library is not installed; install the dev "
-                    "extras to benchmark it"
+                    "dateparser not installed; install the dev extras to benchmark it"
                 )
             mod = dateparser
+
             # The Python module only operates on a single string.
             def parse(raw: str) -> object:
-                return mod.parse(raw)
+                return mod.parse(raw)  # type: ignore
 
             return parse
         case "pandas":
             # Same defensive pattern as the dateparser branch above.
             if pd is None:
                 raise RuntimeError(
-                    "pandas library is not installed; install the dev "
-                    "extras to benchmark it"
+                    "pandas not installed; install the dev extras to benchmark it"
                 )
             mod = pd
+
             # ``format="mixed"`` lets pandas infer a format per input;
             # ``errors="coerce"`` returns ``NaT`` for unparseable
             # inputs instead of raising, mirroring the per-input
@@ -674,7 +674,9 @@ def verify_bulk(
     return mismatches
 
 
-def print_verification(_name: str, total: int, mismatches: list[Mismatch], verbose: bool = False) -> None:
+def print_verification(
+    _name: str, total: int, mismatches: list[Mismatch], verbose: bool = False
+) -> None:
     """Print a verification report for one library.
 
     With ``verbose=False`` (the default), only the summary line is
@@ -788,12 +790,16 @@ def main(argv: list[str] | None = None) -> int:
         # abbreviated to ``d/s`` to keep each line compact.
         labels = [LIBRARIES[lib] for lib in selected]
         throughputs = [
-            format_throughput(results[lib][1], results[lib][0], unit="d/s")
+            format_throughput(
+                results[lib][1],
+                results[lib][0],
+                unit="d/s",
+            )
             for lib in selected
         ]
         label_width = max(len(lbl) for lbl in labels)
         throughput_width = max(len(t) for t in throughputs)
-        for lbl, t in zip(labels, throughputs):
+        for lbl, t in zip(labels, throughputs, strict=True):
             print(f"{lbl:<{label_width}}: {t:>{throughput_width}}")
         return 0
 

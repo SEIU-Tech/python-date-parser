@@ -27,16 +27,11 @@ def test_parse_iso8601_t_separator() -> None:
     # No offset — the case the crate refuses, fixed by our normalizer.
     assert date_parser.parse("2026-09-18T01:02:03") == "2026-09-18 01:02:03+00:00"
     # No offset, with fractional seconds.
-    assert (
-        date_parser.parse("2026-09-18T01:02:03.123")
-        == "2026-09-18 01:02:03.123+00:00"
-    )
+    assert date_parser.parse("2026-09-18T01:02:03.123") == "2026-09-18 01:02:03.123+00:00"
     # With ``Z`` (already worked before, included as a regression check).
     assert date_parser.parse("2026-09-18T01:02:03Z") == "2026-09-18 01:02:03+00:00"
     # With explicit offset (also previously working, kept as regression).
-    assert (
-        date_parser.parse("2026-09-18T01:02:03+05:30") == "2026-09-17 19:32:03+00:00"
-    )
+    assert date_parser.parse("2026-09-18T01:02:03+05:30") == "2026-09-17 19:32:03+00:00"
 
 
 def test_parse_timestamp() -> None:
@@ -51,17 +46,12 @@ def test_parse_timestamp() -> None:
     # 1620021848429 ms -> 2021-05-03 06:04:08.429 UTC.
     assert date_parser.parse("1620021848429") == "2021-05-03 06:04:08.429+00:00"
     # 1620024872717915000 ns -> 2021-05-03 06:54:32.717915 UTC.
-    assert (
-        date_parser.parse("1620024872717915000")
-        == "2021-05-03 06:54:32.717915+00:00"
-    )
+    assert date_parser.parse("1620024872717915000") == "2021-05-03 06:54:32.717915+00:00"
 
 
 def test_parse_list_iso_date() -> None:
     """A canonical ISO-8601 date should round-trip cleanly via parse_list."""
-    assert date_parser.parse_list(["2026-09-18"]) == [
-        "2026-09-18 00:00:00+00:00"
-    ]
+    assert date_parser.parse_list(["2026-09-18"]) == ["2026-09-18 00:00:00+00:00"]
 
 
 def test_parse_list_iso8601_t_separator() -> None:
@@ -71,21 +61,13 @@ def test_parse_list_iso8601_t_separator() -> None:
     the same normalization rules.
     """
     # No offset — the case the crate refuses, fixed by our normalizer.
-    assert date_parser.parse_list(["2026-09-18T01:02:03"]) == [
-        "2026-09-18 01:02:03+00:00"
-    ]
+    assert date_parser.parse_list(["2026-09-18T01:02:03"]) == ["2026-09-18 01:02:03+00:00"]
     # No offset, with fractional seconds.
-    assert date_parser.parse_list(["2026-09-18T01:02:03.123"]) == [
-        "2026-09-18 01:02:03.123+00:00"
-    ]
+    assert date_parser.parse_list(["2026-09-18T01:02:03.123"]) == ["2026-09-18 01:02:03.123+00:00"]
     # With ``Z`` (already worked before, included as a regression check).
-    assert date_parser.parse_list(["2026-09-18T01:02:03Z"]) == [
-        "2026-09-18 01:02:03+00:00"
-    ]
+    assert date_parser.parse_list(["2026-09-18T01:02:03Z"]) == ["2026-09-18 01:02:03+00:00"]
     # With explicit offset (also previously working, kept as regression).
-    assert date_parser.parse_list(["2026-09-18T01:02:03+05:30"]) == [
-        "2026-09-17 19:32:03+00:00"
-    ]
+    assert date_parser.parse_list(["2026-09-18T01:02:03+05:30"]) == ["2026-09-17 19:32:03+00:00"]
 
 
 def test_parse_list_multiple() -> None:
@@ -124,17 +106,11 @@ def test_parse_list_timestamp() -> None:
     component are trimmed, so 429 ms renders as ``.429``.
     """
     # 1511648546 seconds -> 2017-11-25 22:22:26 UTC.
-    assert date_parser.parse_list(["1511648546"]) == [
-        "2017-11-25 22:22:26+00:00"
-    ]
+    assert date_parser.parse_list(["1511648546"]) == ["2017-11-25 22:22:26+00:00"]
     # 1620021848429 ms -> 2021-05-03 06:04:08.429 UTC.
-    assert date_parser.parse_list(["1620021848429"]) == [
-        "2021-05-03 06:04:08.429+00:00"
-    ]
+    assert date_parser.parse_list(["1620021848429"]) == ["2021-05-03 06:04:08.429+00:00"]
     # 1620024872717915000 ns -> 2021-05-03 06:54:32.717915 UTC.
-    assert date_parser.parse_list(["1620024872717915000"]) == [
-        "2021-05-03 06:54:32.717915+00:00"
-    ]
+    assert date_parser.parse_list(["1620024872717915000"]) == ["2021-05-03 06:54:32.717915+00:00"]
 
 
 def test_parse_series_basic() -> None:
@@ -202,16 +178,13 @@ def test_parse_series_matches_parse() -> None:
         raw, single_results, list_results, series_result.to_list(), strict=False
     ):
         if single_str is None:
-            assert dt is None, (
-                f"parse() returned None for {raw_input!r} but parse_series did not"
-            )
+            assert dt is None, f"parse() returned None for {raw_input!r} but parse_series did not"
             assert list_str is None, (
                 f"parse() returned None for {raw_input!r} but parse_list did not"
             )
             continue
         assert single_str == list_str, (
-            f"parse() and parse_list() disagree for {raw_input!r}: "
-            f"{single_str!r} vs {list_str!r}"
+            f"parse() and parse_list() disagree for {raw_input!r}: {single_str!r} vs {list_str!r}"
         )
         # ``parse()``/``parse_list()`` emit an aware ISO-8601 string
         # (`+00:00`); the ``Datetime("ns")`` Series is naive. Both encode
@@ -219,6 +192,5 @@ def test_parse_series_matches_parse() -> None:
         # ``None``.
         expected = datetime.fromisoformat(single_str).replace(tzinfo=None)
         assert dt == expected, (
-            f"mismatch for {raw_input!r}: parse() -> {single_str!r}, "
-            f"parse_series -> {dt!r}"
+            f"mismatch for {raw_input!r}: parse() -> {single_str!r}, parse_series -> {dt!r}"
         )
