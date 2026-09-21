@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-"""Benchmark date_parser (the local Rust extension) against the formats in
-examples.txt, optionally alongside the dateparser and pandas reference
-implementations.
+"""Benchmark date_parser (the local Rust extension) and other libraries
 
 By default every available library is benchmarked so the throughput can be
-compared side-by-side. Use --library to select a single library. After each
+compared. Use --library to select a single library. After each
 library's timed run, its output is verified against the expected ISO-8601
 values from the second column of the examples file. By default the
 verification report shows only the summary count; pass -v/--verbose to

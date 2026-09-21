@@ -25,23 +25,21 @@ Polars is in parsing heterogenous dates defined in the same column of source
 data.  Yes, that is bad data and the provider should do better. In the real
 world, a lot of data looks that way.
 
-This library is a thin wrapper around the existing Rust `dateparser` and 
-`chrono`.  It was mostly created with the aid of an AI assistant.  Although
-commit messages attribute this Claude, the underlying model used was a slightly
-customized version of MiniMax M2.7 that was hosted by a smaller AI vendor. I 
-simply used the Claude Code CLI as a way of interacting with the code and 
-model.
+This library is a thin wrapper around the existing Rust `dateparser`.  It was
+mostly created with the aid of an AI assistant.  Although commit messages
+attribute this Claude, the underlying model used was a slightly customized
+version of MiniMax M2.7 that was hosted by a smaller AI vendor. I simply used
+the Claude Code CLI as a way of interacting with the code and model.
 
 This library is **thousands of times** faster than any pure-Python library for
-a similar task.  I have not yet benchmarked it, but I believe it is also 10x+
-faster than similar capability in `pandas.to_datetime(..., format="mixed")`.
+a similar task.  It is around 50x faster than similar capability in 
+`pandas.to_datetime(..., format="mixed")`.
 
 
 ## Design
 
-The underlying Rust extension exposes three parsing functions. The Rust
-library created for this binding adds very little to the capabilities of
-crates it uses.
+This Python module exposes three parsing functions. The Rust library created
+for this binding adds very little to the capabilities of crates it uses.
 
 - `parse(raw: str) -> str | None` — accepts a single raw date string
   and returns its ISO-8601 representation (or `None` for inputs the
@@ -80,7 +78,7 @@ Datetime('ns')
 
 **Note:** parsed datetimes are normalized to UTC (`+00:00`), matching the
 behavior of the `dateparser` Rust crate. The Python `dateparser` library
-preserves the original timezone offset; we don't (yet).
+preserves the local timezone offset.
 
 Pure-numeric inputs (e.g. `"1511648546"`) are interpreted as Unix
 timestamps and forced to UTC: 10 digits = seconds, 13 = milliseconds,
@@ -96,9 +94,8 @@ pip install gnosis-date-parser
 ## Benchmarking
 
 `bin/benchmark.py` measures throughput of the three `date_parser`
-entry points side-by-side against the Python
-[`dateparser`](https://pypi.org/project/dateparser/) and 
-[Pandas] (https://pandas.pydata.org):
+functions, of the pure-Python [`dateparser`](https://pypi.org/project/dateparser/), 
+and of [Pandas](https://pandas.pydata.org):
 
 ```bash
 usage: benchmark.py [-h] [--examples EXAMPLES]
@@ -106,7 +103,7 @@ usage: benchmark.py [-h] [--examples EXAMPLES]
                     [--iterations ITERATIONS] [--warmup WARMUP] [--verbose]
                     [--quiet]
 
-Benchmark date_parser (the local Rust extension) against the formats in
+Benchmark date_parser (the local Rust extension) and other libraries
 
 options:
   -h, --help            show this help message and exit
