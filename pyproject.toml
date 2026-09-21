@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "gnosis-date-parser"
-version = "1.0.2"
+version = "1.0.4"
 description = "Fast fuzzy parsing of dates in varying formats."
 readme = "README.md"
 license = "BSD-2-Clause"
@@ -22,7 +22,6 @@ classifiers = [
     "License :: OSI Approved :: BSD License",
 ]
 dependencies = [
-    "dateparser>=1.4.3",
     "polars>=1.44.2",
 ]
 
@@ -34,6 +33,10 @@ dev = [
     "ruff>=0.7",
     "mkdocs-material>=9.5",
     "ipython>=8.39.0",
+    # Reference parsers used only by bin/benchmark.py; not runtime
+    # dependencies of the date_parser extension itself.
+    "dateparser>=1.4.3",
+    "pandas>=2.3,<3",
 ]
 
 [project.urls]

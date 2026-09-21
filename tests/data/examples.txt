@@ -1,5 +1,10 @@
-# Examples taken from https://docs.rs/dateparser/0.3.1/dateparser/
+# Most examples from https://docs.rs/dateparser/0.3.1/dateparser/
 
+# Sometimes the variables <TODAY>, <PST>, and <DAY> are used in expected values
+# Patterns that do not indicate a date will vary in output each time this data
+# is used. One strange pattern inserts the current day-of-month into a pattern
+# specifying year and month.
+ 
 # unix timestamp
 1511648546	2017-11-25 22:22:26+00:00
 1620021848429	2021-05-03 06:04:08.429000+00:00
@@ -42,6 +47,7 @@ Wed, 02 Jun 2021 06:31:39 GMT	2021-06-02 06:31:39+00:00
 2014-04-26 13:13:44 +09:00	2014-04-26 13:13:44+09:00
 2012-08-03 18:31:59.257000000 +0000	2012-08-03 18:31:59.257000+00:00
 2015-09-30 18:48:56.35272715 UTC	2015-09-30 18:48:56.352727+00:00
+
 # yyyy-mm-dd
 2021-02-21	2021-02-21 00:00:00
 
@@ -135,7 +141,7 @@ October 7, 1970	1970-10-07 00:00:00
 03.31.2014	2014-03-31 00:00:00
 08.21.71	1971-08-21 00:00:00
 
-# yyyy.mm.dd (yyyy.mm behavior is strange, unsure what does this)
+# yyyy.mm.dd (yyyy.mm behavior is strange, unsure what app/system does this)
 2014.03.29	2014-03-29 00:00:00
 2014.03	2014-03-<DAY> 00:00:00
 

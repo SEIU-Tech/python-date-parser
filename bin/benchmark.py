@@ -1,17 +1,23 @@
 #!/usr/bin/env python3
-"""Benchmark date_parser (the local Rust extension) and dateparser (the
-external Python reference implementation) against the formats in examples.txt.
+"""Benchmark date_parser (the local Rust extension) against the formats in
+examples.txt, optionally alongside the dateparser and pandas reference
+implementations.
 
-By default both libraries are benchmarked so the throughput can be compared
-side-by-side. Use --library to select a single library. After each library's
-timed run, its output is verified against the expected ISO-8601 values from
-the second column of the examples file and any mismatches are listed.
+By default every available library is benchmarked so the throughput can be
+compared side-by-side. Use --library to select a single library. After each
+library's timed run, its output is verified against the expected ISO-8601
+values from the second column of the examples file. By default the
+verification report shows only the summary count; pass -v/--verbose to
+list each mismatched input, its expected value, and the actual value.
 
 Usage:
-    uv run python bin/benchmark.py                # both libraries
+    uv run python bin/benchmark.py                # every available library
     uv run python bin/benchmark.py --library date_parser
     uv run python bin/benchmark.py --library dateparser
+    uv run python bin/benchmark.py --library pandas
     uv run python bin/benchmark.py -n 10          # 10 timed iterations
+    uv run python bin/benchmark.py -v              # show per-mismatch detail
+    uv run python bin/benchmark.py -q              # one throughput line per lib
     uv run python bin/benchmark.py --examples path/to/examples.txt
 """
 
@@ -21,13 +27,30 @@ import argparse
 import re
 import sys
 import time
+import warnings
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum, auto
 from pathlib import Path
 
-import dateparser
+try:
+    import dateparser
+except ImportError:
+    # ``dateparser`` is a dev-only optional dependency used only as a
+    # reference library inside this benchmark. The benchmark still
+    # runs (against ``date_parser`` alone) when it's not installed;
+    # main() emits a warning if the user asked to benchmark it.
+    dateparser = None  # type: ignore[assignment]
+
+try:
+    import pandas as pd
+except ImportError:
+    # ``pandas`` is another dev-only reference library; same treatment
+    # as ``dateparser`` — main() filters it out of the selected list
+    # and warns when the user asked to benchmark it.
+    pd = None  # type: ignore[assignment]
+
 import polars as pl
 
 import date_parser
@@ -43,10 +66,11 @@ DAY = TODAY.split("-")[-1]
 
 # Library identifiers and their human-readable labels for the report.
 LIBRARIES: dict[str, str] = {
-    "date_parser": "date_parser (this project) — parse() per input",
-    "date_parser_list": "date_parser (this project) — parse_list bulk API",
-    "date_parser_series": "date_parser (this project) — parse_series Polars API",
+    "date_parser": "date_parser — parse() per input",
+    "date_parser_list": "date_parser — parse_list bulk API",
+    "date_parser_series": "date_parser — parse_series Polars API",
     "dateparser": "dateparser (https://pypi.org/project/dateparser/)",
+    "pandas": "pandas — pd.to_datetime(format='mixed')",
 }
 
 # A literal 'YYYY-MM-DD' has no time component; the expected column in
@@ -154,9 +178,45 @@ def make_parser(name: str, raw_inputs: list[str]) -> Callable[[str], object]:
 
             return parse
         case "dateparser":
+            # Defensive: main() filters ``dateparser`` out of the
+            # selected library list when the import above failed, so
+            # this branch should only run when the module is available.
+            # The explicit check gives a clear error if a future caller
+            # bypasses that filter.
+            if dateparser is None:
+                raise RuntimeError(
+                    "dateparser library is not installed; install the dev "
+                    "extras to benchmark it"
+                )
+            mod = dateparser
             # The Python module only operates on a single string.
             def parse(raw: str) -> object:
-                return dateparser.parse(raw)
+                return mod.parse(raw)
+
+            return parse
+        case "pandas":
+            # Same defensive pattern as the dateparser branch above.
+            if pd is None:
+                raise RuntimeError(
+                    "pandas library is not installed; install the dev "
+                    "extras to benchmark it"
+                )
+            mod = pd
+            # ``format="mixed"`` lets pandas infer a format per input;
+            # ``errors="coerce"`` returns ``NaT`` for unparseable
+            # inputs instead of raising, mirroring the per-input
+            # behavior of the other parsers.
+            #
+            # ``format="mixed"`` also emits a ``FutureWarning`` on
+            # inputs that include unrecognized timezone abbreviations
+            # (e.g. "PST"). The warning is about a planned pandas API
+            # change — irrelevant to a throughput benchmark — so
+            # suppress it within the parse call rather than letting it
+            # spam the output.
+            def parse(raw: str) -> object:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", FutureWarning)
+                    return mod.to_datetime(raw, format="mixed", errors="coerce")
 
             return parse
         case _:
@@ -256,10 +316,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "date_parser_list",
             "date_parser_series",
             "dateparser",
-            "both",
+            "pandas",
+            "all",
         ),
-        default="both",
-        help="Which library to benchmark (default: both)",
+        default="all",
+        help="Which library to benchmark (default: all)",
     )
     parser.add_argument(
         "--iterations",
@@ -275,13 +336,32 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=1,
         help="Number of warmup iterations to run before timing (default: 1)",
     )
+    parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help=(
+            "Show per-mismatch detail (raw input, expected, actual) "
+            "in verification reports. Default: summary only."
+        ),
+    )
+    parser.add_argument(
+        "--quiet",
+        "-q",
+        action="store_true",
+        help=(
+            "Print only one line per library — ``<label>: <throughput>`` "
+            "— and suppress the header, verification report, and speedup "
+            "comparison. Useful for scripts that just want the numbers."
+        ),
+    )
     return parser.parse_args(argv)
 
 
-def format_throughput(parses: int, elapsed: float) -> str:
+def format_throughput(parses: int, elapsed: float, unit: str = "dates/sec") -> str:
     if elapsed > 0:
-        return f"{parses / elapsed:,.0f} dates/sec"
-    return "inf dates/sec"
+        return f"{parses / elapsed:,.0f} {unit}"
+    return f"inf {unit}"
 
 
 def parse_expected_instant(expected: str) -> datetime | None:
@@ -315,8 +395,10 @@ def to_actual_instant(name: str, actual: object) -> datetime | None:
     ``date_parser`` (single-string API) returns either an ISO-8601
     string or ``None``; we normalize the string the same way as the
     expected column. ``dateparser`` returns a datetime or ``None``.
-    Both naive and timezone-aware outputs are normalized to UTC so
-    they can be compared against :func:`parse_expected_instant`.
+    ``pandas`` returns a ``pd.Timestamp`` (which subclasses
+    ``datetime``) or ``pd.NaT``; we use ``pd.isna`` to detect the
+    NaT case. Both naive and timezone-aware outputs are normalized
+    to UTC so they can be compared against :func:`parse_expected_instant`.
     """
     if name == "date_parser":
         if actual is None:
@@ -326,6 +408,16 @@ def to_actual_instant(name: str, actual: object) -> datetime | None:
         return parse_expected_instant(actual)
     if name == "dateparser":
         if actual is None or not isinstance(actual, datetime):
+            return None
+        if actual.tzinfo is None:
+            return actual.replace(tzinfo=timezone.utc)
+        return actual.astimezone(timezone.utc)
+    if name == "pandas":
+        # main() guarantees ``pd`` is not None when this branch runs.
+        assert pd is not None
+        if pd.isna(actual):
+            return None
+        if not isinstance(actual, datetime):
             return None
         if actual.tzinfo is None:
             return actual.replace(tzinfo=timezone.utc)
@@ -343,6 +435,14 @@ def format_actual(name: str, actual: object) -> str:
         return repr(actual)
     if name == "dateparser":
         if actual is None:
+            return "null"
+        if isinstance(actual, datetime):
+            return actual.isoformat(" ", timespec="microseconds")
+        return repr(actual)
+    if name == "pandas":
+        # main() guarantees ``pd`` is not None when this branch runs.
+        assert pd is not None
+        if actual is None or pd.isna(actual):
             return "null"
         if isinstance(actual, datetime):
             return actual.isoformat(" ", timespec="microseconds")
@@ -574,13 +674,22 @@ def verify_bulk(
     return mismatches
 
 
-def print_verification(_name: str, total: int, mismatches: list[Mismatch]) -> None:
-    """Print a verification report for one library."""
+def print_verification(_name: str, total: int, mismatches: list[Mismatch], verbose: bool = False) -> None:
+    """Print a verification report for one library.
+
+    With ``verbose=False`` (the default), only the summary line is
+    printed. With ``verbose=True``, each mismatch's raw input,
+    expected value, and actual output is listed below the summary so
+    the run can be diagnosed without re-running the benchmark.
+    """
     if not mismatches:
         print(f"verification: {total}/{total} inputs matched expected")
         return
 
     print(f"verification: {len(mismatches)}/{total} inputs did not match expected")
+    if not verbose:
+        return
+
     print()
     for m in mismatches:
         print(f"  [{m.index}] {m.example.raw!r}")
@@ -605,12 +714,38 @@ def main(argv: list[str] | None = None) -> int:
     # pass uses both columns, so we keep the full Example objects here.
     raw_inputs = [ex.raw for ex in examples]
 
-    selected: list[str] = list(LIBRARIES) if args.library == "both" else [args.library]
+    selected: list[str] = list(LIBRARIES) if args.library == "all" else [args.library]
 
-    print(f"examples file:    {args.examples}")
-    print(f"distinct inputs:  {len(raw_inputs)}")
-    print(f"iterations:       {args.iterations} ({args.warmup} warmup)")
-    print()
+    # The ``dateparser`` and ``pandas`` reference libraries live in
+    # [project.optional-dependencies].dev; warn and skip each one
+    # the user selected (or that ``all`` includes) when its dev
+    # extra isn't installed.
+    missing_extras: dict[str, str] = {
+        "dateparser": (
+            "the 'dateparser' library is not installed; skipping it. "
+            "Install the dev extras (`pip install gnosis-date-parser[dev]`) "
+            "to include it in the benchmark."
+        ),
+        "pandas": (
+            "the 'pandas' library is not installed; skipping it. "
+            "Install the dev extras (`pip install gnosis-date-parser[dev]`) "
+            "to include it in the benchmark."
+        ),
+    }
+    available = {"dateparser": dateparser, "pandas": pd}
+    for name, message in missing_extras.items():
+        if name in selected and available[name] is None:
+            warnings.warn(message, stacklevel=2)
+            selected = [lib for lib in selected if lib != name]
+    if not selected:
+        print("no libraries left to benchmark", file=sys.stderr)
+        return 1
+
+    if not args.quiet:
+        print(f"examples file:    {args.examples}")
+        print(f"distinct inputs:  {len(raw_inputs)}")
+        print(f"iterations:       {args.iterations} ({args.warmup} warmup)")
+        print()
 
     results: dict[str, tuple[float, int, int]] = {}
     for lib in selected:
@@ -624,6 +759,9 @@ def main(argv: list[str] | None = None) -> int:
             bulk=is_bulk(lib),
         )
         results[lib] = (elapsed, parses, failures)
+
+        if args.quiet:
+            continue  # quiet-mode summary is printed below, after alignment
 
         print(f"{LIBRARIES[lib]}:")
         print(f"  total parses:   {parses}")
@@ -641,8 +779,23 @@ def main(argv: list[str] | None = None) -> int:
             mismatches = verify_bulk(lib, parse_fn, examples)
         else:
             mismatches = verify_parser(lib, parse_fn, examples)
-        print_verification(lib, len(examples), mismatches)
+        print_verification(lib, len(examples), mismatches, verbose=args.verbose)
         print()
+
+    if args.quiet:
+        # Quiet mode prints all libraries at once so the throughput
+        # columns align — easier to compare numbers by eye. Units are
+        # abbreviated to ``d/s`` to keep each line compact.
+        labels = [LIBRARIES[lib] for lib in selected]
+        throughputs = [
+            format_throughput(results[lib][1], results[lib][0], unit="d/s")
+            for lib in selected
+        ]
+        label_width = max(len(lbl) for lbl in labels)
+        throughput_width = max(len(t) for t in throughputs)
+        for lbl, t in zip(labels, throughputs):
+            print(f"{lbl:<{label_width}}: {t:>{throughput_width}}")
+        return 0
 
     if "date_parser" in results and "dateparser" in results:
         a_elapsed, _, _ = results["date_parser"]

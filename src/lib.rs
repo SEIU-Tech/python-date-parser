@@ -200,7 +200,11 @@ fn parse_series(pys: PySeries) -> PyResult<PySeries> {
     let series: Series = pys.into();
     let str_ca = series
         .str()
-        .map_err(|e| PyValueError::new_err(format!("expected String Series, got {:?}: {e}", series.dtype())))?;
+        .map_err(
+            |e| PyValueError::new_err(
+                format!("expected String Series, got {:?}: {e}", series.dtype())
+            )
+        )?;
 
     let midnight = NaiveTime::from_hms_opt(0, 0, 0)
         .expect("00:00:00 is a valid NaiveTime; qed");

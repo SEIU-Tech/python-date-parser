@@ -97,73 +97,44 @@ pip install gnosis-date-parser
 
 `bin/benchmark.py` measures throughput of the three `date_parser`
 entry points side-by-side against the Python
-[`dateparser`](https://pypi.org/project/dateparser/) reference:
+[`dateparser`](https://pypi.org/project/dateparser/) and 
+[Pandas] (https://pandas.pydata.org):
 
 ```bash
-# Benchmark all four libraries (the Rust extension has three modes)
-uv run python bin/benchmark.py
+usage: benchmark.py [-h] [--examples EXAMPLES]
+                    [--library {date_parser,date_parser_list,...}]
+                    [--iterations ITERATIONS] [--warmup WARMUP] [--verbose]
+                    [--quiet]
 
-# Benchmark a single library
-uv run python bin/benchmark.py --library date_parser
-uv run python bin/benchmark.py --library date_parser_list
-uv run python bin/benchmark.py --library date_parser_series
-uv run python bin/benchmark.py --library dateparser
+Benchmark date_parser (the local Rust extension) against the formats in
 
-# 10 timed iterations instead of the default 5
-uv run python bin/benchmark.py -n 10
+options:
+  -h, --help            show this help message and exit
+  --examples EXAMPLES   Path to the examples file (default: /media/dmertz/DQM-
+                        Backup/SEIU/gnosis-date-parser/tests/data/examples.txt)
+  --library, -l {date_parser,date_parser_list,date_parser_series,dateparser,pandas,all}
+                        Which library to benchmark (default: all)
+  --iterations, -n ITERATIONS
+                        Number of timed iterations (default: 5)
+  --warmup, -w WARMUP   Number of warmup iterations to run before timing
+                        (default: 1)
+  --verbose, -v         Show per-mismatch detail (raw input, expected, actual)
+                        in verification reports. Default: summary only.
+  --quiet, -q           Print only one line per library — ``<label>:
+                        <throughput>`` — and suppress the header, verification
+                        report, and speedup comparison. Useful for scripts that
+                        just want the numbers.
 ```
 
-The `--library` choices map to the underlying APIs as follows:
-
-| `--library`           | API exercised             | Calls per iteration |
-| --------------------- | --------------------------| ------------------- |
-| `date_parser`         | `parse(s)` (per input)    | `len(raw_inputs)`   |
-| `date_parser_list`    | `parse_list(list)` (bulk) | `1`                 |
-| `date_parser_series`  | `parse_series(s)` (Arrow) | `1`                 |
-| `dateparser`          | `dateparser.parse(s)`     | `len(raw_inputs)`   |
-
-After each timed run the script verifies the parsed output against the
-expected ISO-8601 values in `tests/data/examples.txt` and prints any
-mismatches.
-
-On my system, at version 1.0, I see:
+On my system, at version 1.0.4, I see:
 
 ```
-date_parser (Rust extension, this project) — parse() per input:
-  total parses:   475
-  failed parses:  0
-  elapsed:        0.000 s
-  throughput:     1,153,021 dates/sec
-
-verification: 95/95 inputs matched expected
-
-date_parser (Rust extension, this project) — parse_list bulk API:
-  total parses:   475
-  failed parses:  0
-  elapsed:        0.000 s
-  throughput:     1,297,230 dates/sec
-
-verification: 95/95 inputs matched expected
-
-date_parser (Rust extension, this project) — parse_series Polars API:
-  total parses:   475
-  failed parses:  0
-  elapsed:        0.000 s
-  throughput:     2,001,053 dates/sec
-
-verification: 95/95 inputs matched expected
-
-dateparser (Python reference, https://pypi.org/project/dateparser/):
-  total parses:   475
-  failed parses:  0
-  elapsed:        3.247 s
-  throughput:     146 dates/sec
-
-verification: 10/95 inputs did not match expected
-
-[... to be fair, examples were mainly drawn from the underlying Rust crate ...]
-
-speedup (date_parser vs dateparser): 7882.0x faster
+% uv run python bin/benchmark.py -q
+date_parser — parse() per input                  : 1,164,578 d/s
+date_parser — parse_list bulk API                : 1,294,147 d/s
+date_parser — parse_series Polars API            : 1,992,147 d/s
+dateparser (https://pypi.org/project/dateparser/):       147 d/s
+pandas — pd.to_datetime(format='mixed')          :    40,363 d/s
 ```
 
 ## Local development
