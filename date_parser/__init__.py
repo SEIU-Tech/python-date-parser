@@ -53,4 +53,4 @@ else:
     from .date_parser import parse_series  # type: ignore[no-redef]
 
 __all__ = ["parse", "parse_list", "parse_series"]
-__version__ = "0.2.0"
+__version__ = "1.1.0"
