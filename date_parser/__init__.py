@@ -14,6 +14,10 @@ The Rust extension exposes three functions:
   the underlying Arrow buffer directly via ``pyo3-polars``, so there is
   no Python-level iteration.
 
+Polars is an *optional* dependency: without it installed, :func:`parse`
+and :func:`parse_list` work unchanged, and calling :func:`parse_series`
+raises an ``ImportError`` pointing to the ``[polars]`` extra.
+
 Example:
     >>> import polars as pl, date_parser
     >>> date_parser.parse("2026-01-01")
@@ -26,7 +30,27 @@ Example:
     Datetime('ns')
 """
 
-from .date_parser import parse, parse_list, parse_series
+from importlib.util import find_spec
+
+from .date_parser import parse, parse_list
+
+if find_spec("polars") is None:
+    def parse_series(series: object) -> object:
+        """Raise an informative error: Polars is not installed.
+
+        The real ``parse_series`` lives in the Rust extension; this stub
+        only takes its place when the optional Polars dependency is
+        missing, so callers get actionable guidance rather than a bare
+        ``ModuleNotFoundError`` from deep inside Polars itself.
+        """
+        raise ImportError(
+            "date_parser.parse_series() requires Polars, which is an "
+            "optional dependency of gnosis-date-parser.\n"
+            "Install it with:  pip install gnosis-date-parser[polars]"
+        ) from None
+
+else:
+    from .date_parser import parse_series  # type: ignore[no-redef]
 
 __all__ = ["parse", "parse_list", "parse_series"]
-__version__ = "0.1.0"
+__version__ = "0.2.0"

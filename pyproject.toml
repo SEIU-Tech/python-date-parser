@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "gnosis-date-parser"
-version = "1.0.4"
+version = "0.2.0"
 description = "Fast fuzzy parsing of dates in varying formats."
 readme = "README.md"
 license = "BSD-2-Clause"
@@ -21,11 +21,17 @@ classifiers = [
     "Operating System :: OS Independent",
     "License :: OSI Approved :: BSD License",
 ]
-dependencies = [
-    "polars>=1.44.2",
-]
+# Polars is an OPTIONAL dependency: it is only needed for the
+# `parse_series()` convenience API. Install it with the extra
+# `pip install gnosis-date-parser[polars]`; without it, `parse()` and
+# `parse_list()` still work, and `parse_series()` raises an informative
+# ImportError when called.
+dependencies = []
 
 [project.optional-dependencies]
+polars = [
+    "polars>=1.44.2",
+]
 dev = [
     "maturin>=1.15",
     "pytest>=8",
@@ -33,8 +39,11 @@ dev = [
     "ruff>=0.7",
     "mkdocs-material>=9.5",
     "ipython>=8.39.0",
-    # Reference parsers used only by bin/benchmark.py; not runtime
-    # dependencies of the date_parser extension itself.
+    # The dev environment exercises all three APIs, so it includes the
+    # optional Polars extra alongside the reference parsers used only by
+    # bin/benchmark.py (which are not runtime dependencies of the
+    # date_parser extension itself).
+    "polars>=1.44.2",
     "dateparser>=1.4.3",
     "pandas>=2.3,<3",
 ]

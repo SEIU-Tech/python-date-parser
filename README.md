@@ -6,29 +6,29 @@ Perform fast fuzzy parsing of dates in varying formats.
 
 Numerous prior projects to perform fuzzy date parsing are available on PyPI.
 The best of these appears to be https://pypi.org/project/dateparser/, but I
-have not tried all of them.  All of those I have seen are written in
+have not tried all of them.  All of those which I have seen are written in
 pure-Python, and consequentially are too slow to use when the requirement is to
 parse tabular data with hundreds of thousands of dates in an interactive manner
 (e.g. at the time of data upload to a website where an immediate response is
-needed).
+ needed).
 
 In many cases—arguably including the one motivating creation of this
 library—transferring the slow operation to a background batch operation is a
-reasonable approach.  However, I learned of the very fast Rust library 
-`dateparser` (https://crates.io/crates/dateparser), which is as powerful in 
+reasonable approach.  However, I learned of the very fast Rust library:
+https://crates.io/crates/dateparser. This is is approximately as powerful in
 recognizing many date formats as are any of the Python libraries I explored.  
 
-What I have used historically is the fuzzy date matching in Pandas; this is 
+What I have used in the past is the fuzzy date matching in Pandas; this is 
 _good_, but for numerous other reasons, I wish to move away from Pandas (mostly
 in favor of Polars).  However, one area where Pandas currently shines above
 Polars is in parsing heterogenous dates defined in the same column of source
-data.  Yes, that is bad data and the provider should do better. In the real
+data.  Yes, that is bad data and its provider should do better. In the real
 world, a lot of data looks that way.
 
 This library is a thin wrapper around the existing Rust `dateparser`.  It was
 mostly created with the aid of an AI assistant.  Although commit messages
 attribute this Claude, the underlying model used was a slightly customized
-version of MiniMax M2.7 that was hosted by a smaller AI vendor. I simply used
+version of MiniMax M3 that was hosted by a smaller AI vendor. I simply used
 the Claude Code CLI as a way of interacting with the code and model.
 
 This library is **thousands of times** faster than any pure-Python library for
@@ -45,7 +45,7 @@ for this binding adds very little to the capabilities of crates it uses.
   and returns its ISO-8601 representation (or `None` for inputs the
   parser can't handle).
 
-- `parse_list(raw_dates: list[str]) -> list[str | None]` — accepts a
+- `parrse_list(raw_dates: list[str]) -> list[str | None]` — accepts a
   list of raw date strings and returns a list of ISO-8601 strings (or
   `None` for inputs the parser can't handle). The returned list matches
   the input length and order. This is the bulk-list path: one Rust
@@ -55,12 +55,14 @@ for this binding adds very little to the capabilities of crates it uses.
   of string dtype and returns a Polars Series of `pl.Datetime("ns")`
   (naive UTC, nanosecond precision). Unparseable strings become null
   values in the result. The Polars path works directly on the
-  underlying Arrow buffer via 
-  [`pyo3-polars`](https://docs.rs/pyo3-polars/0.28.0/pyo3_polars/),
+  underlying Arrow buffer via
+  [`pyo3-polars`](https://docs.rs/pyo3-polars/latest/pyo3_polars/),
   so there is no Python-level iteration or list materialization.
 
-All three paths use the same parsing logic via the
-[`dateparser`](https://docs.rs/dateparser/0.3.1/dateparser/) crate.
+Polars is an **optional** dependency: without it installed, calling
+`parse_series()` raises an `ImportError` pointing to the `[polars]` extra.
+
+All three paths use the same parsing logic.
 
 ```python
 >>> import date_parser
@@ -77,18 +79,25 @@ Datetime('ns')
 ```
 
 **Note:** parsed datetimes are normalized to UTC (`+00:00`), matching the
-behavior of the `dateparser` Rust crate. The Python `dateparser` library
-preserves the local timezone offset.
+behavior of the `dateparser` Rust crate. 
 
 Pure-numeric inputs (e.g. `"1511648546"`) are interpreted as Unix
 timestamps and forced to UTC: 10 digits = seconds, 13 = milliseconds,
-16 = microseconds, 19 = nanoseconds. The Python `dateparser` library
-interprets these in the local timezone instead.
+16 = microseconds, 19 = nanoseconds. 
 
 ## Installation
 
+`parse()` and `parse_list()` have no Python dependencies beyond the
+Rust extension itself:
+
 ```bash
 pip install gnosis-date-parser
+```
+
+The Polars-based `parse_series()` requires the optional extra:
+
+```bash
+pip install "gnosis-date-parser[polars]"
 ```
 
 ## Benchmarking
@@ -103,35 +112,18 @@ usage: benchmark.py [-h] [--examples EXAMPLES]
                     [--iterations ITERATIONS] [--warmup WARMUP] [--verbose]
                     [--quiet]
 
-Benchmark date_parser (the local Rust extension) and other libraries
-
-options:
-  -h, --help            show this help message and exit
-  --examples EXAMPLES   Path to the examples file (default: /media/dmertz/DQM-
-                        Backup/SEIU/gnosis-date-parser/tests/data/examples.txt)
-  --library, -l {date_parser,date_parser_list,date_parser_series,dateparser,pandas,all}
-                        Which library to benchmark (default: all)
-  --iterations, -n ITERATIONS
-                        Number of timed iterations (default: 5)
-  --warmup, -w WARMUP   Number of warmup iterations to run before timing
-                        (default: 1)
-  --verbose, -v         Show per-mismatch detail (raw input, expected, actual)
-                        in verification reports. Default: summary only.
-  --quiet, -q           Print only one line per library — ``<label>:
-                        <throughput>`` — and suppress the header, verification
-                        report, and speedup comparison. Useful for scripts that
-                        just want the numbers.
+[...]                    
 ```
 
-On my system, at version 1.0.4, I see:
+On my system I see:
 
 ```
 % uv run python bin/benchmark.py -q
+dateparser (https://pypi.org/project/dateparser/):       147 d/s
+pandas — pd.to_datetime(format='mixed')          :    40,363 d/s
 date_parser — parse() per input                  : 1,164,578 d/s
 date_parser — parse_list bulk API                : 1,294,147 d/s
 date_parser — parse_series Polars API            : 1,992,147 d/s
-dateparser (https://pypi.org/project/dateparser/):       147 d/s
-pandas — pd.to_datetime(format='mixed')          :    40,363 d/s
 ```
 
 ## Local development

@@ -16,7 +16,9 @@ The Rust extension exposes three parsing functions:
   `pl.Datetime("ns")`. The Polars path works directly on the underlying
   Arrow buffer via
   [`pyo3-polars`](https://docs.rs/pyo3-polars/0.28.0/pyo3_polars/),
-  with no Python-level iteration.
+  with no Python-level iteration. Polars is an **optional** dependency:
+  without it installed, calling `parse_series()` raises an
+  `ImportError` pointing to the `[polars]` extra.
 
 ```python
 >>> import json, date_parser
@@ -40,7 +42,8 @@ interpreted as Unix timestamps (10 digits = seconds, 13 = ms, 16 = µs,
 ## Local development
 
 ```bash
-# Install dev tools (maturin, pytest, ruff, mypy, mkdocs-material)
+# Install dev tools (maturin, pytest, ruff, mypy, mkdocs-material) and
+# the optional Polars extra needed by the parse_series() tests
 pip install -e .[dev]
 
 # Compile the Rust extension and install it editable into the active environment

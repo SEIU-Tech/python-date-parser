@@ -1,8 +1,12 @@
 from datetime import datetime
 
-import polars as pl
+import pytest
 
-import date_parser
+# Polars is an optional dependency; the tests exercising `parse_series`
+# are skipped when it isn't installed.
+pl = pytest.importorskip("polars")
+
+import date_parser  # noqa: E402
 
 
 def test_parse_iso_date() -> None:
