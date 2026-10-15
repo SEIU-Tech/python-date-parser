@@ -28,7 +28,7 @@ world, a lot of data looks that way.
 This library is a thin wrapper around the existing Rust `dateparser`.  It was
 mostly created with the aid of an AI assistant.  Although commit messages
 attribute this Claude, the underlying model used was a slightly customized
-version of MiniMax M2.7 that was hosted by a smaller AI vendor. I simply used
+version of MiniMax M3 that was hosted by a smaller AI vendor. I simply used
 the Claude Code CLI as a way of interacting with the code and model.
 
 This library is **thousands of times** faster than any pure-Python library for
@@ -45,7 +45,7 @@ for this binding adds very little to the capabilities of crates it uses.
   and returns its ISO-8601 representation (or `None` for inputs the
   parser can't handle).
 
-- `parse_list(raw_dates: list[str]) -> list[str | None]` — accepts a
+- `parrse_list(raw_dates: list[str]) -> list[str | None]` — accepts a
   list of raw date strings and returns a list of ISO-8601 strings (or
   `None` for inputs the parser can't handle). The returned list matches
   the input length and order. This is the bulk-list path: one Rust
@@ -56,7 +56,7 @@ for this binding adds very little to the capabilities of crates it uses.
   (naive UTC, nanosecond precision). Unparseable strings become null
   values in the result. The Polars path works directly on the
   underlying Arrow buffer via 
-  [`pyo3-polars`](https://docs.rs/pyo3-polars/0.28.0/pyo3_polars/),
+  [`pyo3-polars`](https://docs.rs/pyo3-polars/latest/pyo3_polars/),
   so there is no Python-level iteration or list materialization.
 
 All three paths use the same parsing logic via the
