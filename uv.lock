@@ -361,11 +361,8 @@ wheels = [
 
 [[package]]
 name = "gnosis-date-parser"
-version = "1.0.4"
+version = "0.2.0"
 source = { editable = "." }
-dependencies = [
-    { name = "polars" },
-]
 
 [package.optional-dependencies]
 dev = [
@@ -376,8 +373,12 @@ dev = [
     { name = "mkdocs-material" },
     { name = "mypy" },
     { name = "pandas" },
+    { name = "polars" },
     { name = "pytest" },
     { name = "ruff" },
+]
+polars = [
+    { name = "polars" },
 ]
 
 [package.metadata]
@@ -388,11 +389,12 @@ requires-dist = [
     { name = "mkdocs-material", marker = "extra == 'dev'", specifier = ">=9.5" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13" },
     { name = "pandas", marker = "extra == 'dev'", specifier = ">=2.3,<3" },
-    { name = "polars", specifier = ">=1.44.2" },
+    { name = "polars", marker = "extra == 'dev'", specifier = ">=1.44.2" },
+    { name = "polars", marker = "extra == 'polars'", specifier = ">=1.44.2" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.7" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["polars", "dev"]
 
 [[package]]
 name = "idna"
