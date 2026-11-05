@@ -109,8 +109,8 @@ and of [Pandas](https://pandas.pydata.org):
 ```bash
 usage: benchmark.py [-h] [--examples EXAMPLES]
                     [--library {date_parser,date_parser_list,...}]
-                    [--iterations ITERATIONS] [--warmup WARMUP] [--verbose]
-                    [--quiet]
+                    [--iterations ITERATIONS] [--warmup WARMUP]
+                    [--verbose] [--quiet]
 
 [...]                    
 ```
