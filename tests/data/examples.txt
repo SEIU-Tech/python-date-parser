@@ -85,6 +85,17 @@ September 17, 2012 at 10:09am PST	2012-09-17 10:09:00-08:00
 # yyyy-mon-dd
 2021-Feb-21	2021-02-21 00:00:00
 
+# Hyphenated month-name dates with the year not first. gnosis-date-parser
+# reorders these onto the yyyy-mon-dd layout before handing them to the
+# underlying crate, which does not accept them natively (added in 1.1.1).
+# dd-mon-yyyy
+01-Jan-1980	1980-01-01 00:00:00
+5-dec-1999	1999-12-05 00:00:00
+
+# mon-dd-yyyy
+Jan-01-1980	1980-01-01 00:00:00
+SEP-30-2024	2024-09-30 00:00:00
+
 # Mon dd, yyyy
 May 25, 2021	2021-05-25 00:00:00
 oct 7, 1970	1970-10-07 00:00:00
