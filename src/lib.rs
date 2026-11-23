@@ -21,8 +21,11 @@
 //! `dateparser` crate would otherwise interpret them in the local
 //! timezone. ISO-8601 datetimes written with the `T` separator and no
 //! offset (e.g. `"2026-09-18T01:02:03"`) are normalized to the space
-//! form before parsing, since the crate otherwise rejects them. These
-//! are known differences from the Python `dateparser` reference, which
+//! form before parsing, since the crate otherwise rejects them.
+//! Hyphenated month-name dates whose year is not first (e.g.
+//! `"01-Jan-1980"`, `"Jan-01-1980"`) are reordered into the
+//! `YYYY-Mon-DD` form the crate does accept. These are known
+//! differences from the Python `dateparser` reference, which
 //! preserves the original offset and uses the current time of day for
 //! date-only inputs.
 
@@ -134,13 +137,79 @@ fn normalize_iso8601_separator(raw: &str) -> std::borrow::Cow<'_, str> {
     }
 }
 
+/// The 12 English month abbreviations, in calendar order (lowercase).
+const MONTH_ABBREVS: [&str; 12] = [
+    "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
+];
+
+/// Whether ``s`` is one of the 12 English month abbreviations, in any
+/// letter case (`Jan`, `JAN`, `jan`, ...).
+fn is_month_abbrev(s: &str) -> bool {
+    s.len() == 3
+        && s.chars().all(|c| c.is_ascii_alphabetic())
+        && MONTH_ABBREVS.contains(&s.to_ascii_lowercase().as_str())
+}
+
+/// Detect hyphen-separated month-name dates the `dateparser` crate
+/// rejects and rewrite them into the `YYYY-Mon-DD` layout its
+/// `month_ymd` rule already accepts.
+///
+/// The crate understands `1980-Jan-01` (year first) but not the equally
+/// common `01-Jan-1980` (day-month-year) or `Jan-01-1980`
+/// (month-day-year). Because the month field is a recognized English
+/// month abbreviation, the field order is unambiguous and the
+/// reordering is lossless. The day is zero-padded to two digits;
+/// everything else — including the already-supported `YYYY-Mon-DD`
+/// form and the purely numeric `YYYY-MM-DD` — is returned untouched.
+fn normalize_hyphen_month_name(raw: &str) -> std::borrow::Cow<'_, str> {
+    let parts: Vec<&str> = raw.split('-').collect();
+    let [a, b, c] = parts.as_slice() else {
+        return std::borrow::Cow::Borrowed(raw);
+    };
+    let is_year =
+        |s: &str| s.len() == 4 && s.chars().all(|c| c.is_ascii_digit());
+    let is_day = |s: &str| {
+        (1..=2).contains(&s.len()) && s.chars().all(|c| c.is_ascii_digit())
+    };
+
+    // Classify the layout; bail out unless exactly one field is a month
+    // abbreviation, one is a 4-digit year, and one is a 1-2 digit day.
+    let (year, month, day) = if is_year(a) && is_month_abbrev(b) && is_day(c) {
+        (*a, *b, *c) // YYYY-Mon-DD: already the crate's canonical form
+    } else if is_day(a) && is_month_abbrev(b) && is_year(c) {
+        (*c, *b, *a) // DD-Mon-YYYY
+    } else if is_month_abbrev(a) && is_day(b) && is_year(c) {
+        (*c, *a, *b) // Mon-DD-YYYY
+    } else {
+        return std::borrow::Cow::Borrowed(raw);
+    };
+
+    // If the input is already canonical (year first, 2-digit day), keep
+    // the borrowed zero-copy path.
+    if year == *a && day.len() == 2 {
+        return std::borrow::Cow::Borrowed(raw);
+    }
+    let mut s = String::with_capacity(raw.len());
+    s.push_str(year);
+    s.push('-');
+    s.push_str(month);
+    s.push('-');
+    if day.len() == 1 {
+        s.push('0');
+    }
+    s.push_str(day);
+    std::borrow::Cow::Owned(s)
+}
+
 /// Parse one raw date string into a UTC datetime, or ``None`` on failure.
 ///
 /// Centralizes the parse pipeline so [`parse`] and [`parse_series`] stay
-/// in sync: ISO-8601 separator normalization, Unix-timestamp fast path,
-/// then `dateparser::parse_with` as the final fallback.
+/// in sync: ISO-8601 separator normalization, hyphenated month-name
+/// reordering, Unix-timestamp fast path, then `dateparser::parse_with`
+/// as the final fallback.
 fn parse_one(raw: &str, midnight: NaiveTime) -> Option<DateTime<Utc>> {
     let normalized = normalize_iso8601_separator(raw);
+    let normalized = normalize_hyphen_month_name(&normalized);
     try_unix_timestamp(&normalized)
         .or_else(|| dateparser::parse_with(&normalized, &Utc, midnight).ok())
 }
@@ -243,4 +312,98 @@ mod date_parser {
     use super::parse_list;
     #[pymodule_export]
     use super::parse_series;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn midnight() -> NaiveTime {
+        NaiveTime::from_hms_opt(0, 0, 0).unwrap()
+    }
+
+    #[test]
+    fn hyphen_month_name_day_first() {
+        let got = parse_one("01-Jan-1980", midnight()).unwrap();
+        assert_eq!(got.format("%Y-%m-%d").to_string(), "1980-01-01");
+    }
+
+    #[test]
+    fn hyphen_month_name_month_first() {
+        let got = parse_one("Jan-01-1980", midnight()).unwrap();
+        assert_eq!(got.format("%Y-%m-%d").to_string(), "1980-01-01");
+    }
+
+    #[test]
+    fn hyphen_month_name_variant_spellings() {
+        // Case-insensitive abbreviation and single-digit day both work.
+        assert_eq!(
+            parse_one("5-dec-1999", midnight())
+                .unwrap()
+                .format("%Y-%m-%d")
+                .to_string(),
+            "1999-12-05"
+        );
+        assert_eq!(
+            parse_one("SEP-30-2024", midnight())
+                .unwrap()
+                .format("%Y-%m-%d")
+                .to_string(),
+            "2024-09-30"
+        );
+    }
+
+    #[test]
+    fn hyphen_month_name_canonical_untouched() {
+        // The already-supported year-first form must still parse, and the
+        // normalizer must not rewrite it.
+        assert_eq!(
+            normalize_hyphen_month_name("1980-Jan-01"),
+            std::borrow::Cow::Borrowed("1980-Jan-01")
+        );
+        assert!(parse_one("1980-Jan-01", midnight()).is_some());
+    }
+
+    #[test]
+    fn hyphen_month_name_numeric_untouched() {
+        // Purely numeric hyphen dates must never be reordered.
+        assert_eq!(
+            normalize_hyphen_month_name("1980-01-01"),
+            std::borrow::Cow::Borrowed("1980-01-01")
+        );
+        assert_eq!(
+            normalize_hyphen_month_name("01-15-1980"),
+            std::borrow::Cow::Borrowed("01-15-1980")
+        );
+    }
+
+    #[test]
+    fn hyphen_month_name_invalid_month_not_rewritten() {
+        // A 3-letter non-month word is not rewritten, so the string falls
+        // through to the crate (which rejects it) rather than being
+        // mangled into something meaningful.
+        assert_eq!(
+            normalize_hyphen_month_name("01-XYZ-1980"),
+            std::borrow::Cow::Borrowed("01-XYZ-1980")
+        );
+        assert!(parse_one("01-XYZ-1980", midnight()).is_none());
+    }
+
+    #[test]
+    fn hyphen_month_name_wrong_field_shapes_not_rewritten() {
+        // Two-digit years, 3-digit days, and wrong field counts are left
+        // alone entirely.
+        assert_eq!(
+            normalize_hyphen_month_name("01-Jan-80"),
+            std::borrow::Cow::Borrowed("01-Jan-80")
+        );
+        assert_eq!(
+            normalize_hyphen_month_name("001-Jan-1980"),
+            std::borrow::Cow::Borrowed("001-Jan-1980")
+        );
+        assert_eq!(
+            normalize_hyphen_month_name("1-Jan-1980-05"),
+            std::borrow::Cow::Borrowed("1-Jan-1980-05")
+        );
+    }
 }

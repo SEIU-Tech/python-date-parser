@@ -38,6 +38,31 @@ def test_parse_iso8601_t_separator() -> None:
     assert date_parser.parse("2026-09-18T01:02:03+05:30") == "2026-09-17 19:32:03+00:00"
 
 
+def test_parse_hyphen_month_name() -> None:
+    """Hyphenated month-name dates with the year not first should parse.
+
+    The ``dateparser`` crate only accepts the ``YYYY-Mon-DD`` form
+    (``1980-Jan-01``); the day-first and month-first spellings are
+    reordered onto that canonical layout before parsing.
+    """
+    assert date_parser.parse("01-Jan-1980") == "1980-01-01 00:00:00+00:00"
+    assert date_parser.parse("Jan-01-1980") == "1980-01-01 00:00:00+00:00"
+    # Case-insensitive abbreviation and single-digit day.
+    assert date_parser.parse("5-dec-1999") == "1999-12-05 00:00:00+00:00"
+    assert date_parser.parse("SEP-30-2024") == "2024-09-30 00:00:00+00:00"
+
+
+def test_parse_hyphen_month_name_lookalikes() -> None:
+    """Strings that merely resemble month-name dates stay untouched.
+
+    Non-month 3-letter words, 2-digit years, and purely numeric hyphen
+    dates must not be rewritten (or parsed) by the normalizer.
+    """
+    assert date_parser.parse("01-XYZ-1980") is None
+    assert date_parser.parse("01-Jan-80") is None
+    assert date_parser.parse("1980-01-01") == "1980-01-01 00:00:00+00:00"
+
+
 def test_parse_timestamp() -> None:
     """Unix timestamps are interpreted as UTC.
 
@@ -117,6 +142,15 @@ def test_parse_list_timestamp() -> None:
     assert date_parser.parse_list(["1620024872717915000"]) == ["2021-05-03 06:54:32.717915+00:00"]
 
 
+def test_parse_list_hyphen_month_name() -> None:
+    """Hyphenated month-name dates should parse via parse_list too."""
+    assert date_parser.parse_list(["01-Jan-1980", "Jan-01-1980", "01-XYZ-1980"]) == [
+        "1980-01-01 00:00:00+00:00",
+        "1980-01-01 00:00:00+00:00",
+        None,
+    ]
+
+
 def test_parse_series_basic() -> None:
     """A string Series should parse into a Datetime Series with the right dtype."""
     s = pl.Series(["2026-09-18", "garbage", "2026-09-18T01:02:03", "1511648546"])
@@ -172,6 +206,8 @@ def test_parse_series_matches_parse() -> None:
         "2026-09-18T01:02:03Z",
         "2026-09-18T01:02:03+05:30",
         "2026-09-18 13:31:15 PST",
+        "01-Jan-1980",
+        "Jan-01-1980",
         "garbage",
     ]
     single_results = [date_parser.parse(r) for r in raw]

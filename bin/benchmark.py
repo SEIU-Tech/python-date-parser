@@ -71,6 +71,19 @@ LIBRARIES: dict[str, str] = {
     "pandas": "pandas — pd.to_datetime(format='mixed')",
 }
 
+# The order in which ``all`` benchmarks the libraries: reference
+# implementations first (Python dateparser, then pandas), then the
+# Rust extension from slowest to fastest call style (per-input,
+# bulk list, Polars Series). LIBRARIES stays a dict purely for labels;
+# this list defines the run/report order.
+BENCHMARK_ORDER: list[str] = [
+    "dateparser",
+    "pandas",
+    "date_parser",
+    "date_parser_list",
+    "date_parser_series",
+]
+
 # A literal 'YYYY-MM-DD' has no time component; the expected column in
 # examples.txt almost always supplies one (typically '00:00:00'), but we
 # defensively handle either form when parsing it.
@@ -714,7 +727,13 @@ def main(argv: list[str] | None = None) -> int:
     # pass uses both columns, so we keep the full Example objects here.
     raw_inputs = [ex.raw for ex in examples]
 
-    selected: list[str] = list(LIBRARIES) if args.library == "all" else [args.library]
+    # ``BENCHMARK_ORDER`` defines the sequence for ``all``; a single
+    # ``--library`` request is unaffected.
+    selected: list[str] = (
+        [lib for lib in BENCHMARK_ORDER if lib in LIBRARIES]
+        if args.library == "all"
+        else [args.library]
+    )
 
     # The ``dateparser`` and ``pandas`` reference libraries live in
     # [project.optional-dependencies].dev; warn and skip each one
